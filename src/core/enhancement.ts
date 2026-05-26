@@ -11,9 +11,13 @@ import type {
 
 export interface EnhancementOptions {
   useProtectionStone?: boolean;
+  useSafeguardStone?: boolean;
   useBlessingStone?: boolean;
   successBonusRate?: number;
 }
+
+const GREAT_SUCCESS_MAX_RATE = 5;
+const GREAT_FAILURE_MAX_RATE = 3;
 
 export function validateEnhancementTable(rows: EnhancementRow[]): boolean {
   return rows.every((row) => {
@@ -93,14 +97,30 @@ export function applySuccessBonus(row: EnhancementRow, successBonusRate: number)
   };
 }
 
+export function getGreatSuccessRate(row: EnhancementRow): number {
+  if (row.successRate <= 0) return 0;
+  return Math.min(GREAT_SUCCESS_MAX_RATE, Math.max(1, row.successRate * 0.1));
+}
+
+export function getGreatFailureRate(row: EnhancementRow): number {
+  const dangerRate = row.downRate + row.destroyRate;
+  if (dangerRate <= 0) return 0;
+  return Math.min(GREAT_FAILURE_MAX_RATE, dangerRate * 0.12);
+}
+
 export function rollEnhancement(
   row: EnhancementRow,
   randomValue = Math.random(),
 ): EnhancementOutcome {
   const roll = Math.min(Math.max(randomValue, 0), 0.999999) * 100;
-  let cursor = row.successRate;
+  const greatSuccessRate = getGreatSuccessRate(row);
+  const greatFailureRate = getGreatFailureRate(row);
+  let cursor = greatSuccessRate;
 
+  if (roll < cursor) return "great_success";
+  cursor = row.successRate;
   if (roll < cursor) return "success";
+  if (greatFailureRate > 0 && roll >= 100 - greatFailureRate) return "great_failure";
   cursor += row.keepRate;
   if (roll < cursor) return "keep";
   cursor += row.downRate;
@@ -113,11 +133,33 @@ export function getNextSwordLevel(
   currentLevel: number,
   outcome: EnhancementOutcome,
 ): number {
+  if (outcome === "great_success") return Math.min(currentLevel + 2, MAX_SWORD_LEVEL);
   if (outcome === "success") return Math.min(currentLevel + 1, MAX_SWORD_LEVEL);
   if (outcome === "down") return Math.max(currentLevel - 1, 1);
+  if (outcome === "great_failure") return Math.max(currentLevel - 2, 1);
   if (outcome === "destroyed") return 1;
 
   return currentLevel;
+}
+
+export function getSoulMileageGain(
+  row: EnhancementRow,
+  outcome: EnhancementOutcome,
+): number {
+  switch (outcome) {
+    case "keep":
+      return Math.max(1, Math.floor(row.fromLevel / 10));
+    case "down":
+      return Math.max(3, Math.floor(row.fromLevel / 3));
+    case "great_failure":
+      return Math.max(6, row.destroyMileage, Math.floor(row.fromLevel / 2));
+    case "destroyed":
+      return row.destroyMileage;
+    case "great_success":
+    case "success":
+    case "protected":
+      return 0;
+  }
 }
 
 export function calculateEnhancementResult(
@@ -138,18 +180,26 @@ export function calculateEnhancementResult(
   const rolledOutcome = rollEnhancement(row, randomValue);
   const protectionStoneUsed =
     rolledOutcome === "destroyed" && Boolean(options.useProtectionStone);
-  const outcome = protectionStoneUsed ? "protected" : rolledOutcome;
+  const safeguardStoneUsed =
+    !protectionStoneUsed &&
+    (rolledOutcome === "down" ||
+      rolledOutcome === "destroyed" ||
+      rolledOutcome === "great_failure") &&
+    Boolean(options.useSafeguardStone);
+  const outcome = protectionStoneUsed || safeguardStoneUsed ? "protected" : rolledOutcome;
   const nextLevel = getNextSwordLevel(currentLevel, outcome);
   const destroyed = outcome === "destroyed";
+  const gainedSoulMileage = getSoulMileageGain(baseRow, outcome);
 
   return {
     outcome,
     nextLevel,
     spentGold: row.cost,
     gainedStones: destroyed ? baseRow.salvageStones : 0,
-    gainedSoulMileage: destroyed ? baseRow.destroyMileage : 0,
+    gainedSoulMileage,
     soulBurstUsed,
     protectionStoneUsed,
+    safeguardStoneUsed,
     blessingStoneUsed,
     successBonusRate,
     row,

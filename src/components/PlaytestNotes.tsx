@@ -44,7 +44,7 @@ function notesToMarkdown(notes: PlaytestNote[]): string {
     lines.push(note.text);
     lines.push("");
     lines.push(
-      `Snapshot: +${note.snapshot.swordLevel}, ${note.snapshot.gold}G, stones ${note.snapshot.stones}, attempts ${note.snapshot.totalAttempts}, best +${note.snapshot.bestLevel}, GPS ${note.snapshot.gps.toFixed(1)}, rebirth ${note.snapshot.rebirthCount}`,
+      `Snapshot: +${note.snapshot.swordLevel}, ${note.snapshot.gold}G, stones ${note.snapshot.stones}, attempts ${note.snapshot.totalAttempts}, best +${note.snapshot.bestLevel}, gold/sec ${note.snapshot.gps.toFixed(1)}, rebirth ${note.snapshot.rebirthCount}`,
     );
     lines.push("");
   }
@@ -133,7 +133,8 @@ export function PlaytestNotes({ notes, onAddNote, onClearNotes }: PlaytestNotesP
               <p>{note.text}</p>
               <small>
                 +{note.snapshot.swordLevel} · {formatNumber(note.snapshot.gold)}G · 시도{" "}
-                {formatNumber(note.snapshot.totalAttempts)} · GPS {note.snapshot.gps.toFixed(1)}
+                {formatNumber(note.snapshot.totalAttempts)} · 초당 골드{" "}
+                {note.snapshot.gps.toFixed(1)}
               </small>
             </article>
           ))

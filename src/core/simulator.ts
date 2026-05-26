@@ -6,7 +6,8 @@ import {
   getSellPriceForLevel,
 } from "./enhancementTable";
 import { createSeededRandom } from "./random";
-import type { EnhancementOutcome } from "./types";
+import { getUnclaimedMilestoneRewards, sumMilestoneRewards } from "./milestones";
+import { ENHANCEMENT_OUTCOMES, type EnhancementOutcome } from "./types";
 
 export interface BalanceSimulationOptions {
   runs: number;
@@ -15,6 +16,7 @@ export interface BalanceSimulationOptions {
   maxAttemptsPerRun: number;
   cashoutLevel?: number;
   protectionFromLevel?: number;
+  safeguardFromLevel?: number;
   blessingFromLevel?: number;
   seed?: number;
 }
@@ -26,6 +28,7 @@ export interface NormalizedBalanceSimulationOptions {
   maxAttemptsPerRun: number;
   cashoutLevel?: number;
   protectionFromLevel?: number;
+  safeguardFromLevel?: number;
   blessingFromLevel?: number;
   seed: number;
 }
@@ -38,6 +41,7 @@ export interface BalanceRunSummary {
   bestLevel: number;
   destroyedCount: number;
   protectedCount: number;
+  safeguardUsedCount: number;
   blessingUsedCount: number;
   cashoutCount: number;
   reachedTarget: boolean;
@@ -52,6 +56,7 @@ export interface BalanceSimulationReport {
   averageEndingGold: number;
   averageDestroyedCount: number;
   averageProtectedCount: number;
+  averageSafeguardUsedCount: number;
   averageBlessingUsedCount: number;
   targetReachRate: number;
   levelReachRates: Record<"10" | "15" | "20" | "25" | "30", number>;
@@ -75,13 +80,10 @@ function normalizeStrategyLevel(level: number | undefined): number | undefined {
 }
 
 function emptyOutcomeCounts(): Record<EnhancementOutcome, number> {
-  return {
-    success: 0,
-    keep: 0,
-    down: 0,
-    destroyed: 0,
-    protected: 0,
-  };
+  return Object.fromEntries(ENHANCEMENT_OUTCOMES.map((outcome) => [outcome, 0])) as Record<
+    EnhancementOutcome,
+    number
+  >;
 }
 
 export function simulateBalanceRun(
@@ -96,8 +98,10 @@ export function simulateBalanceRun(
   let bestLevel = 1;
   let destroyedCount = 0;
   let protectedCount = 0;
+  let safeguardUsedCount = 0;
   let blessingUsedCount = 0;
   let cashoutCount = 0;
+  let claimedMilestones: string[] = [];
   const outcomeCounts = emptyOutcomeCounts();
 
   while (attempts < options.maxAttemptsPerRun && level < options.targetLevel) {
@@ -114,6 +118,8 @@ export function simulateBalanceRun(
     const result = calculateEnhancementResult(level, soulMileage, random(), {
       useProtectionStone:
         options.protectionFromLevel !== undefined && level >= options.protectionFromLevel,
+      useSafeguardStone:
+        options.safeguardFromLevel !== undefined && level >= options.safeguardFromLevel,
       useBlessingStone:
         options.blessingFromLevel !== undefined && level >= options.blessingFromLevel,
     });
@@ -126,6 +132,13 @@ export function simulateBalanceRun(
       : soulMileage + result.gainedSoulMileage;
     level = result.nextLevel;
     bestLevel = Math.max(bestLevel, level);
+    const newMilestones = getUnclaimedMilestoneRewards(bestLevel, claimedMilestones);
+    const milestoneReward = sumMilestoneRewards(newMilestones);
+    gold += milestoneReward.gold;
+    claimedMilestones = [
+      ...claimedMilestones,
+      ...newMilestones.map((milestone) => milestone.id),
+    ];
     outcomeCounts[result.outcome] += 1;
 
     if (result.outcome === "destroyed") {
@@ -134,6 +147,10 @@ export function simulateBalanceRun(
 
     if (result.outcome === "protected") {
       protectedCount += 1;
+    }
+
+    if (result.safeguardStoneUsed) {
+      safeguardUsedCount += 1;
     }
 
     if (result.blessingStoneUsed) {
@@ -149,6 +166,7 @@ export function simulateBalanceRun(
     bestLevel,
     destroyedCount,
     protectedCount,
+    safeguardUsedCount,
     blessingUsedCount,
     cashoutCount,
     reachedTarget: bestLevel >= options.targetLevel,
@@ -166,6 +184,7 @@ export function runBalanceSimulation(
     maxAttemptsPerRun: Math.max(1, Math.trunc(options.maxAttemptsPerRun)),
     cashoutLevel: normalizeCashoutLevel(options.cashoutLevel),
     protectionFromLevel: normalizeStrategyLevel(options.protectionFromLevel),
+    safeguardFromLevel: normalizeStrategyLevel(options.safeguardFromLevel),
     blessingFromLevel: normalizeStrategyLevel(options.blessingFromLevel),
     seed: options.seed ?? 20260526,
   };
@@ -180,6 +199,7 @@ export function runBalanceSimulation(
       acc.endingGold += run.endingGold;
       acc.destroyedCount += run.destroyedCount;
       acc.protectedCount += run.protectedCount;
+      acc.safeguardUsedCount += run.safeguardUsedCount;
       acc.blessingUsedCount += run.blessingUsedCount;
       acc.reachedTarget += run.reachedTarget ? 1 : 0;
       acc.level10 += run.bestLevel >= 10 ? 1 : 0;
@@ -187,11 +207,9 @@ export function runBalanceSimulation(
       acc.level20 += run.bestLevel >= 20 ? 1 : 0;
       acc.level25 += run.bestLevel >= 25 ? 1 : 0;
       acc.level30 += run.bestLevel >= 30 ? 1 : 0;
-      acc.outcomes.success += run.outcomeCounts.success;
-      acc.outcomes.keep += run.outcomeCounts.keep;
-      acc.outcomes.down += run.outcomeCounts.down;
-      acc.outcomes.destroyed += run.outcomeCounts.destroyed;
-      acc.outcomes.protected += run.outcomeCounts.protected;
+      for (const outcome of ENHANCEMENT_OUTCOMES) {
+        acc.outcomes[outcome] += run.outcomeCounts[outcome];
+      }
       return acc;
     },
     {
@@ -200,6 +218,7 @@ export function runBalanceSimulation(
       endingGold: 0,
       destroyedCount: 0,
       protectedCount: 0,
+      safeguardUsedCount: 0,
       blessingUsedCount: 0,
       reachedTarget: 0,
       level10: 0,
@@ -210,12 +229,10 @@ export function runBalanceSimulation(
       outcomes: emptyOutcomeCounts(),
     },
   );
-  const totalOutcomes =
-    totals.outcomes.success +
-    totals.outcomes.keep +
-    totals.outcomes.down +
-    totals.outcomes.destroyed +
-    totals.outcomes.protected;
+  const totalOutcomes = ENHANCEMENT_OUTCOMES.reduce(
+    (sum, outcome) => sum + totals.outcomes[outcome],
+    0,
+  );
   const rate = (value: number) => (totalOutcomes > 0 ? value / totalOutcomes : 0);
   const runRate = (value: number) => value / normalizedOptions.runs;
 
@@ -227,6 +244,7 @@ export function runBalanceSimulation(
     averageEndingGold: totals.endingGold / normalizedOptions.runs,
     averageDestroyedCount: totals.destroyedCount / normalizedOptions.runs,
     averageProtectedCount: totals.protectedCount / normalizedOptions.runs,
+    averageSafeguardUsedCount: totals.safeguardUsedCount / normalizedOptions.runs,
     averageBlessingUsedCount: totals.blessingUsedCount / normalizedOptions.runs,
     targetReachRate: runRate(totals.reachedTarget),
     levelReachRates: {
@@ -236,12 +254,8 @@ export function runBalanceSimulation(
       "25": runRate(totals.level25),
       "30": runRate(totals.level30),
     },
-    outcomeRates: {
-      success: rate(totals.outcomes.success),
-      keep: rate(totals.outcomes.keep),
-      down: rate(totals.outcomes.down),
-      destroyed: rate(totals.outcomes.destroyed),
-      protected: rate(totals.outcomes.protected),
-    },
+    outcomeRates: Object.fromEntries(
+      ENHANCEMENT_OUTCOMES.map((outcome) => [outcome, rate(totals.outcomes[outcome])]),
+    ) as Record<EnhancementOutcome, number>,
   };
 }

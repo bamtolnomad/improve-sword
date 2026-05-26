@@ -16,6 +16,7 @@ const CSV_HEADERS: Array<keyof EnhancementAttemptRecord> = [
   "soulMileageAfter",
   "soulBurstUsed",
   "protectionStoneUsed",
+  "safeguardStoneUsed",
   "blessingStoneUsed",
   "rebirthCount",
   "successBonusRate",

@@ -45,8 +45,8 @@ export function MetaPanel({
 
       <div className="metaStats">
         <div>
-          <span>현재 GPS</span>
-          <strong>{gps.toFixed(1)}</strong>
+          <span>초당 골드</span>
+          <strong>{gps.toFixed(1)}G/초</strong>
         </div>
         <div>
           <span>최고 보관</span>
@@ -73,7 +73,7 @@ export function MetaPanel({
           latestStoredSwords.map((sword) => (
             <div key={sword.id}>
               <span>+{sword.level}</span>
-              <strong>GPS +{sword.gpsBonus.toFixed(1)}</strong>
+              <strong>+{sword.gpsBonus.toFixed(1)}G/초</strong>
             </div>
           ))
         ) : (

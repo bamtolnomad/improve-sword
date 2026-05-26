@@ -1,4 +1,14 @@
-export type EnhancementOutcome = "success" | "keep" | "down" | "destroyed" | "protected";
+export const ENHANCEMENT_OUTCOMES = [
+  "great_success",
+  "success",
+  "keep",
+  "down",
+  "destroyed",
+  "great_failure",
+  "protected",
+] as const;
+
+export type EnhancementOutcome = (typeof ENHANCEMENT_OUTCOMES)[number];
 
 export interface EnhancementRow {
   fromLevel: number;
@@ -22,6 +32,7 @@ export interface EnhancementResult {
   gainedSoulMileage: number;
   soulBurstUsed: boolean;
   protectionStoneUsed: boolean;
+  safeguardStoneUsed: boolean;
   blessingStoneUsed: boolean;
   successBonusRate: number;
   row: EnhancementRow;
@@ -56,6 +67,7 @@ export interface EnhancementAttemptRecord {
   soulMileageAfter: number;
   soulBurstUsed: boolean;
   protectionStoneUsed: boolean;
+  safeguardStoneUsed: boolean;
   blessingStoneUsed: boolean;
   rebirthCount: number;
   successBonusRate: number;
@@ -93,6 +105,7 @@ export interface PlaytestNoteSnapshot {
   gps: number;
   storedSwordCount: number;
   protectionStones: number;
+  safeguardStones: number;
   blessingStones: number;
 }
 

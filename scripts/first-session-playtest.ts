@@ -1,15 +1,25 @@
 import { calculateEnhancementResult } from "../src/core/enhancement";
-import { getEnhancementRow, getSellPriceForLevel } from "../src/core/enhancementTable";
+import {
+  SOUL_BURST_THRESHOLD,
+  getEnhancementRow,
+  getSellPriceForLevel,
+} from "../src/core/enhancementTable";
 import { calculateGps, getSalvageStonesForLevel, getStoredSwordGpsBonus } from "../src/core/economy";
+import { getUnclaimedMilestoneRewards, sumMilestoneRewards } from "../src/core/milestones";
 import { createSeededRandom } from "../src/core/random";
 import type { StoredSword } from "../src/core/types";
 
-const INITIAL_GOLD = 12_000;
+const INITIAL_GOLD = 18_000;
 const RUNS = 1000;
 const MAX_ACTIONS = 60;
 const SEED = 20260526;
 
-type Policy = "push" | "sell10" | "salvage10" | "store10";
+interface Policy {
+  label: string;
+  cashoutLevel?: number;
+  salvageLevel?: number;
+  storeLevel?: number;
+}
 
 interface SessionResult {
   attempts: number;
@@ -23,11 +33,14 @@ interface SessionResult {
   gps: number;
 }
 
-const policies: Array<{ label: string; policy: Policy }> = [
-  { label: "그냥 밀기", policy: "push" },
-  { label: "+10 판매 반복", policy: "sell10" },
-  { label: "+10 분해 반복", policy: "salvage10" },
-  { label: "+10 보관 반복", policy: "store10" },
+const policies: Policy[] = [
+  { label: "그냥 밀기" },
+  { label: "+10 판매 반복", cashoutLevel: 10 },
+  { label: "+11 판매 반복", cashoutLevel: 11 },
+  { label: "+10 분해 반복", salvageLevel: 10 },
+  { label: "+11 분해 반복", salvageLevel: 11 },
+  { label: "+10 보관 반복", storeLevel: 10 },
+  { label: "+11 보관 반복", storeLevel: 11 },
 ];
 
 function runSession(policy: Policy, random: () => number): SessionResult {
@@ -41,26 +54,27 @@ function runSession(policy: Policy, random: () => number): SessionResult {
   let soldCount = 0;
   let salvagedCount = 0;
   let storedCount = 0;
+  let claimedMilestones: string[] = [];
   const storedSwords: StoredSword[] = [];
 
   while (actions < MAX_ACTIONS) {
     actions += 1;
 
-    if (policy === "sell10" && level >= 10) {
+    if (policy.cashoutLevel && level >= policy.cashoutLevel) {
       gold += getSellPriceForLevel(level);
       soldCount += 1;
       level = 1;
       continue;
     }
 
-    if (policy === "salvage10" && level >= 10) {
+    if (policy.salvageLevel && level >= policy.salvageLevel) {
       stones += getSalvageStonesForLevel(level);
       salvagedCount += 1;
       level = 1;
       continue;
     }
 
-    if (policy === "store10" && level >= 10) {
+    if (policy.storeLevel && level >= policy.storeLevel) {
       storedSwords.push({
         id: `${storedCount + 1}`,
         level,
@@ -82,10 +96,18 @@ function runSession(policy: Policy, random: () => number): SessionResult {
     gold -= result.spentGold;
     stones += result.gainedStones;
     soulMileage = result.soulBurstUsed
-      ? Math.max(0, soulMileage - 100) + result.gainedSoulMileage
+      ? Math.max(0, soulMileage - SOUL_BURST_THRESHOLD) + result.gainedSoulMileage
       : soulMileage + result.gainedSoulMileage;
     level = result.nextLevel;
     bestLevel = Math.max(bestLevel, level);
+    const newMilestones = getUnclaimedMilestoneRewards(bestLevel, claimedMilestones);
+    const milestoneReward = sumMilestoneRewards(newMilestones);
+    gold += milestoneReward.gold;
+    stones += milestoneReward.stones;
+    claimedMilestones = [
+      ...claimedMilestones,
+      ...newMilestones.map((milestone) => milestone.id),
+    ];
   }
 
   return {
@@ -113,11 +135,11 @@ function pct(value: number): string {
   return `${(value * 100).toFixed(1)}%`;
 }
 
-for (const { label, policy } of policies) {
+for (const policy of policies) {
   const random = createSeededRandom(SEED);
   const results = Array.from({ length: RUNS }, () => runSession(policy, random));
 
-  console.log(`\n## ${label}`);
+  console.log(`\n## ${policy.label}`);
   console.log(`avgBestLevel=${average(results, "bestLevel").toFixed(2)}`);
   console.log(`avgAttempts=${average(results, "attempts").toFixed(1)}`);
   console.log(`avgEndingGold=${Math.round(average(results, "endingGold"))}`);
@@ -127,6 +149,6 @@ for (const { label, policy } of policies) {
   console.log(`avgSalvaged=${average(results, "salvagedCount").toFixed(2)}`);
   console.log(`avgStored=${average(results, "storedCount").toFixed(2)}`);
   console.log(
-    `reach +10/${pct(rate(results, (result) => result.bestLevel >= 10))} +12/${pct(rate(results, (result) => result.bestLevel >= 12))} +15/${pct(rate(results, (result) => result.bestLevel >= 15))}`,
+    `reach +10/${pct(rate(results, (result) => result.bestLevel >= 10))} +11/${pct(rate(results, (result) => result.bestLevel >= 11))} +12/${pct(rate(results, (result) => result.bestLevel >= 12))} +15/${pct(rate(results, (result) => result.bestLevel >= 15))}`,
   );
 }

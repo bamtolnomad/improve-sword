@@ -1,71 +1,133 @@
-import { Archive, Coins, Gem, Hammer, Info, ShieldAlert } from "lucide-react";
-import { applyBlessingStone, applySuccessBonus } from "../core/enhancement";
-import { getEnhancementRow, getSellPriceForLevel } from "../core/enhancementTable";
-import { getSalvageStonesForLevel, getStoredSwordGpsBonus } from "../core/economy";
+import {
+  Archive,
+  Coins,
+  Flame,
+  Gem,
+  Hammer,
+  Shield,
+  ShieldAlert,
+  ShieldCheck,
+  Sparkles,
+} from "lucide-react";
+import {
+  applyBlessingStone,
+  applySoulBurst,
+  applySuccessBonus,
+  getGreatFailureRate,
+  getGreatSuccessRate,
+} from "../core/enhancement";
+import {
+  SOUL_BURST_THRESHOLD,
+  getEnhancementRow,
+  getSellPriceForLevel,
+  getSellStrategyForLevel,
+} from "../core/enhancementTable";
+import {
+  PROTECTION_STONE_COST,
+  getSalvageStonesForLevel,
+  getStoredSwordGpsBonus,
+} from "../core/economy";
 import { formatNumber, formatPercent } from "../core/format";
 
 interface ControlPanelProps {
   level: number;
+  stones: number;
+  soulMileage: number;
   canEnhance: boolean;
   onEnhance: () => void;
   onSell: () => void;
   onSalvage: () => void;
   onStore: () => void;
   protectionStones: number;
+  safeguardStones: number;
   blessingStones: number;
   useProtectionStone: boolean;
+  useSafeguardStone: boolean;
   useBlessingStone: boolean;
   onUseProtectionStoneChange: (enabled: boolean) => void;
+  onUseSafeguardStoneChange: (enabled: boolean) => void;
   onUseBlessingStoneChange: (enabled: boolean) => void;
   successBonusRate: number;
 }
 
 export function ControlPanel({
   level,
+  stones,
+  soulMileage,
   canEnhance,
   onEnhance,
   onSell,
   onSalvage,
   onStore,
   protectionStones,
+  safeguardStones,
   blessingStones,
   useProtectionStone,
+  useSafeguardStone,
   useBlessingStone,
   onUseProtectionStoneChange,
+  onUseSafeguardStoneChange,
   onUseBlessingStoneChange,
   successBonusRate,
 }: ControlPanelProps) {
   const row = getEnhancementRow(level);
-  const rowAfterBlessing = row && useBlessingStone && blessingStones > 0 ? applyBlessingStone(row) : row;
-  const displayedRow = rowAfterBlessing ? applySuccessBonus(rowAfterBlessing, successBonusRate) : rowAfterBlessing;
+  const isSoulBurstReady = soulMileage >= SOUL_BURST_THRESHOLD;
+  const rowAfterSoul = row && isSoulBurstReady ? applySoulBurst(row) : row;
+  const rowAfterBlessing =
+    rowAfterSoul && useBlessingStone && blessingStones > 0
+      ? applyBlessingStone(rowAfterSoul)
+      : rowAfterSoul;
+  const displayedRow = rowAfterBlessing
+    ? applySuccessBonus(rowAfterBlessing, successBonusRate)
+    : rowAfterBlessing;
+  const greatSuccessRate = displayedRow ? getGreatSuccessRate(displayedRow) : 0;
+  const greatFailureRate = displayedRow ? getGreatFailureRate(displayedRow) : 0;
   const sellPrice = getSellPriceForLevel(level);
+  const sellStrategy = getSellStrategyForLevel(level);
   const salvageStones = getSalvageStonesForLevel(level);
   const gpsBonus = getStoredSwordGpsBonus(level);
   const canSettleSword = level > 1;
+  const dangerRate = displayedRow ? displayedRow.downRate + displayedRow.destroyRate : 0;
+  const protectionProgressAfterSalvage = Math.min(
+    PROTECTION_STONE_COST,
+    stones + salvageStones,
+  );
+  const salvageHint =
+    protectionProgressAfterSalvage >= PROTECTION_STONE_COST
+      ? "보호석 가능"
+      : `보호 ${protectionProgressAfterSalvage}/${PROTECTION_STONE_COST}`;
+  const settlementHint =
+    sellStrategy.band === "profit"
+      ? "판매 대박"
+      : sellStrategy.band === "recover"
+        ? "판매 회수"
+        : sellStrategy.band === "loss"
+          ? "분해 우선"
+          : "강화 우선";
+  const getToggleClassName = (type: string, isDisabled: boolean, isActive: boolean) =>
+    ["itemToggle", `${type}Toggle`, isDisabled ? "disabled" : "", isActive ? "active" : ""]
+      .filter(Boolean)
+      .join(" ");
 
   return (
     <section className="controlPanel" aria-label="강화 조작">
       <div className="panelTitle">
-        <Info size={17} />
-        <span>강화 정보</span>
+        <Flame size={17} />
+        <span>대장간</span>
       </div>
 
       {row ? (
         <>
-          <div className="rateGrid">
-            <div className="rate success">
-              <span>성공</span>
+          <div className="forgeOdds">
+            <div className="oddsPrimary">
+              <span>성공률</span>
               <strong>{formatPercent(displayedRow!.successRate)}</strong>
             </div>
-            <div className="rate neutral">
-              <span>유지</span>
-              <strong>{formatPercent(displayedRow!.keepRate)}</strong>
+            <div>
+              <span>위험</span>
+              <strong>{formatPercent(dangerRate)}</strong>
             </div>
-            <div className="rate warning">
-              <span>하락</span>
-              <strong>{formatPercent(displayedRow!.downRate)}</strong>
-            </div>
-            <div className="rate danger">
+            <div>
               <span>파괴</span>
               <strong>{formatPercent(displayedRow!.destroyRate)}</strong>
             </div>
@@ -80,29 +142,79 @@ export function ControlPanel({
             <ShieldAlert size={16} />
             <span>
               {displayedRow!.recommendedItem}
+              {` · ${settlementHint}`}
+              {isSoulBurstReady ? " · 파괴 없음" : ""}
               {successBonusRate > 0 ? ` · 환생 +${successBonusRate.toFixed(1)}%p` : ""}
             </span>
           </div>
 
+          <div className="fortuneLine">
+            <Sparkles size={16} />
+            <span>
+              흥망성쇠 대성공 {formatPercent(greatSuccessRate)} · 대실패{" "}
+              {formatPercent(greatFailureRate)}
+            </span>
+          </div>
+
           <div className="itemToggles">
-            <label className={protectionStones <= 0 ? "disabled" : ""}>
+            <label
+              className={getToggleClassName(
+                "protection",
+                protectionStones <= 0,
+                useProtectionStone && protectionStones > 0,
+              )}
+              title="파괴 방지 보호석"
+            >
               <input
                 type="checkbox"
                 checked={useProtectionStone && protectionStones > 0}
                 disabled={protectionStones <= 0}
                 onChange={(event) => onUseProtectionStoneChange(event.target.checked)}
               />
-              <span>보호석</span>
+              <span>
+                <Shield size={14} />
+                보호석
+              </span>
               <strong>{protectionStones}</strong>
             </label>
-            <label className={blessingStones <= 0 ? "disabled" : ""}>
+            <label
+              className={getToggleClassName(
+                "safeguard",
+                safeguardStones <= 0,
+                useSafeguardStone && safeguardStones > 0,
+              )}
+              title="파괴와 하락 방지 수호석"
+            >
+              <input
+                type="checkbox"
+                checked={useSafeguardStone && safeguardStones > 0}
+                disabled={safeguardStones <= 0}
+                onChange={(event) => onUseSafeguardStoneChange(event.target.checked)}
+              />
+              <span>
+                <ShieldCheck size={14} />
+                수호석
+              </span>
+              <strong>{safeguardStones}</strong>
+            </label>
+            <label
+              className={getToggleClassName(
+                "blessing",
+                blessingStones <= 0,
+                useBlessingStone && blessingStones > 0,
+              )}
+              title="성공률 상승 축복석"
+            >
               <input
                 type="checkbox"
                 checked={useBlessingStone && blessingStones > 0}
                 disabled={blessingStones <= 0}
                 onChange={(event) => onUseBlessingStoneChange(event.target.checked)}
               />
-              <span>축복석</span>
+              <span>
+                <Sparkles size={14} />
+                축복석
+              </span>
               <strong>{blessingStones}</strong>
             </label>
           </div>
@@ -112,36 +224,47 @@ export function ControlPanel({
       )}
 
       <div className="actionStack">
-        <button className="primaryButton" type="button" onClick={onEnhance} disabled={!row || !canEnhance}>
+        <button
+          className="primaryButton enhanceAction"
+          type="button"
+          onClick={onEnhance}
+          disabled={!row || !canEnhance}
+        >
           <Hammer size={20} />
-          강화
+          <span>강화하기</span>
+          {row ? <small>{formatNumber(row.cost)}G</small> : null}
         </button>
         <button
-          className="secondaryButton"
+          className="secondaryButton sellAction"
           type="button"
           onClick={onSell}
           disabled={!canSettleSword}
         >
           <Coins size={19} />
-          판매 {formatNumber(sellPrice)}G
+          <span>판매</span>
+          <small>
+            {formatNumber(sellPrice)}G · {sellStrategy.label}
+          </small>
         </button>
         <button
-          className="secondaryButton"
+          className="secondaryButton salvageAction"
           type="button"
           onClick={onSalvage}
           disabled={!canSettleSword}
         >
           <Gem size={18} />
-          분해 {formatNumber(salvageStones)}
+          <span>분해 +{formatNumber(salvageStones)}</span>
+          <small>{salvageHint}</small>
         </button>
         <button
-          className="secondaryButton"
+          className="secondaryButton storeAction"
           type="button"
           onClick={onStore}
           disabled={!canSettleSword}
         >
           <Archive size={18} />
-          보관 GPS +{gpsBonus.toFixed(1)}
+          <span>보관</span>
+          <small>+{gpsBonus.toFixed(1)}G/초</small>
         </button>
       </div>
     </section>

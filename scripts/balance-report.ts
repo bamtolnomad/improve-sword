@@ -30,12 +30,24 @@ const scenarios: Array<{ label: string; options: BalanceSimulationOptions }> = [
     },
   },
   {
+    label: "수호 16+",
+    options: {
+      runs: 1000,
+      initialGold: 1_000_000,
+      targetLevel: 25,
+      protectionFromLevel: 15,
+      safeguardFromLevel: 16,
+      maxAttemptsPerRun: 1600,
+    },
+  },
+  {
     label: "풀도핑 23+",
     options: {
       runs: 1000,
       initialGold: 1_000_000,
       targetLevel: 30,
       protectionFromLevel: 15,
+      safeguardFromLevel: 16,
       blessingFromLevel: 23,
       maxAttemptsPerRun: 2000,
     },
@@ -55,6 +67,7 @@ for (const scenario of scenarios) {
   console.log(`avgEndingGold=${Math.round(report.averageEndingGold)}`);
   console.log(`avgDestroyed=${report.averageDestroyedCount.toFixed(2)}`);
   console.log(`avgProtected=${report.averageProtectedCount.toFixed(2)}`);
+  console.log(`avgSafeguard=${report.averageSafeguardUsedCount.toFixed(2)}`);
   console.log(`avgBlessing=${report.averageBlessingUsedCount.toFixed(2)}`);
   console.log(`targetReach=${pct(report.targetReachRate)}`);
   console.log(

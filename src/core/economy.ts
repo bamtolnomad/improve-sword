@@ -4,15 +4,33 @@ import type { StoredSword } from "./types";
 
 export const BASE_GPS = 3;
 export const OFFLINE_REWARD_CAP_SECONDS = 60 * 60 * 12;
-export const PROTECTION_STONE_COST = 15;
-export const BLESSING_STONE_COST = 25;
+export const PROTECTION_STONE_COST = 8;
+export const SAFEGUARD_STONE_COST = 18;
+export const BLESSING_STONE_COST = 12;
+export const MINING_COOLDOWN_MS = 60_000;
+export const MINING_DURATION_MS = 3_000;
+export const MINING_STONE_CHANCE = 0.3;
+export const MINING_STONE_PITY_THRESHOLD = 3;
+
+export interface MiningReward {
+  gold: number;
+  stones: number;
+  nextPity: number;
+  pityTriggered: boolean;
+}
 
 export function getSalvageStonesForLevel(level: number): number {
-  if (level >= MAX_SWORD_LEVEL) {
-    return getEnhancementRow(MAX_SWORD_LEVEL - 1)?.salvageStones ?? 0;
-  }
+  const safeLevel = Math.min(Math.max(Math.trunc(level), 1), MAX_SWORD_LEVEL);
+  const tableValue =
+    safeLevel >= MAX_SWORD_LEVEL
+      ? getEnhancementRow(MAX_SWORD_LEVEL - 1)?.salvageStones ?? 0
+      : getEnhancementRow(safeLevel)?.salvageStones ?? 0;
 
-  return getEnhancementRow(level)?.salvageStones ?? 0;
+  if (safeLevel <= 1) return 0;
+  if (safeLevel <= 5) return Math.max(tableValue, safeLevel - 1);
+  if (safeLevel <= 9) return Math.max(tableValue, safeLevel - 4);
+
+  return tableValue;
 }
 
 export function getStoredSwordGpsBonus(level: number): number {
@@ -25,6 +43,33 @@ export function getStoredSwordGpsBonus(level: number): number {
   if (safeLevel < 25) return safeLevel * 1.8;
 
   return safeLevel * 2.6;
+}
+
+export function getMiningGoldReward(currentEnhancementCost: number): number {
+  return Math.max(300, Math.floor(Math.max(0, currentEnhancementCost) * 0.35));
+}
+
+export function calculateMiningReward(
+  currentEnhancementCost: number,
+  pity: number,
+  chanceRoll = Math.random(),
+  amountRoll = Math.random(),
+): MiningReward {
+  const safePity = Math.max(0, Math.trunc(pity));
+  const pityTriggered = safePity >= MINING_STONE_PITY_THRESHOLD;
+  const foundStones = pityTriggered || chanceRoll < MINING_STONE_CHANCE;
+  const stones = foundStones
+    ? pityTriggered
+      ? 1
+      : 1 + Math.min(2, Math.floor(amountRoll * 3))
+    : 0;
+
+  return {
+    gold: getMiningGoldReward(currentEnhancementCost),
+    stones,
+    nextPity: foundStones ? 0 : safePity + 1,
+    pityTriggered,
+  };
 }
 
 export function getCollectionBonus(storedSwords: StoredSword[]): number {

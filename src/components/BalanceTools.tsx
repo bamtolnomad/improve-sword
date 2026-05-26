@@ -43,12 +43,24 @@ const presets = [
     },
   },
   {
+    label: "수호 16+",
+    options: {
+      runs: 300,
+      initialGold: 1_000_000,
+      targetLevel: 25,
+      protectionFromLevel: 15,
+      safeguardFromLevel: 16,
+      maxAttemptsPerRun: 1600,
+    },
+  },
+  {
     label: "풀도핑 23+",
     options: {
       runs: 300,
       initialGold: 1_000_000,
       targetLevel: 30,
       protectionFromLevel: 15,
+      safeguardFromLevel: 16,
       blessingFromLevel: 23,
       maxAttemptsPerRun: 2000,
     },
@@ -62,6 +74,7 @@ interface SimulatorFormState {
   maxAttemptsPerRun: number;
   cashoutLevel: number;
   protectionFromLevel: number;
+  safeguardFromLevel: number;
   blessingFromLevel: number;
 }
 
@@ -91,6 +104,7 @@ export function BalanceTools({ records }: BalanceToolsProps) {
     maxAttemptsPerRun: 600,
     cashoutLevel: 0,
     protectionFromLevel: 15,
+    safeguardFromLevel: 16,
     blessingFromLevel: 23,
   });
   const latestRuns = useMemo(() => report.runs.slice(0, 5), [report]);
@@ -109,6 +123,7 @@ export function BalanceTools({ records }: BalanceToolsProps) {
       maxAttemptsPerRun: preset.options.maxAttemptsPerRun,
       cashoutLevel: preset.options.cashoutLevel ?? 0,
       protectionFromLevel: preset.options.protectionFromLevel ?? 0,
+      safeguardFromLevel: preset.options.safeguardFromLevel ?? 0,
       blessingFromLevel: preset.options.blessingFromLevel ?? 0,
     });
     setReport(
@@ -136,6 +151,8 @@ export function BalanceTools({ records }: BalanceToolsProps) {
       cashoutLevel: formState.cashoutLevel > 0 ? formState.cashoutLevel : undefined,
       protectionFromLevel:
         formState.protectionFromLevel > 0 ? formState.protectionFromLevel : undefined,
+      safeguardFromLevel:
+        formState.safeguardFromLevel > 0 ? formState.safeguardFromLevel : undefined,
       blessingFromLevel: formState.blessingFromLevel > 0 ? formState.blessingFromLevel : undefined,
       seed: Date.now() % 1_000_000_000,
     };
@@ -232,6 +249,16 @@ export function BalanceTools({ records }: BalanceToolsProps) {
           />
         </label>
         <label>
+          <span>수호</span>
+          <input
+            type="number"
+            min="0"
+            max="30"
+            value={formState.safeguardFromLevel}
+            onChange={(event) => updateFormValue("safeguardFromLevel", event.target.valueAsNumber)}
+          />
+        </label>
+        <label>
           <span>축복</span>
           <input
             type="number"
@@ -264,6 +291,10 @@ export function BalanceTools({ records }: BalanceToolsProps) {
         <div>
           <span>평균 보호</span>
           <strong>{report.averageProtectedCount.toFixed(1)}회</strong>
+        </div>
+        <div>
+          <span>수호 사용</span>
+          <strong>{report.averageSafeguardUsedCount.toFixed(1)}회</strong>
         </div>
         <div>
           <span>축복 사용</span>

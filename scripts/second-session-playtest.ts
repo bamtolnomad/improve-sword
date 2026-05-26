@@ -1,11 +1,17 @@
 import { calculateEnhancementResult } from "../src/core/enhancement";
-import { getEnhancementRow, getSellPriceForLevel } from "../src/core/enhancementTable";
+import {
+  SOUL_BURST_THRESHOLD,
+  getEnhancementRow,
+  getSellPriceForLevel,
+} from "../src/core/enhancementTable";
 import {
   PROTECTION_STONE_COST,
+  SAFEGUARD_STONE_COST,
   calculateGps,
   getSalvageStonesForLevel,
   getStoredSwordGpsBonus,
 } from "../src/core/economy";
+import { getUnclaimedMilestoneRewards, sumMilestoneRewards } from "../src/core/milestones";
 import { createSeededRandom } from "../src/core/random";
 import type { StoredSword } from "../src/core/types";
 
@@ -21,6 +27,8 @@ interface Policy {
   storeLevel?: number;
   prepareProtectionLevel?: number;
   protectionFromLevel?: number;
+  prepareSafeguardLevel?: number;
+  safeguardFromLevel?: number;
 }
 
 interface SessionResult {
@@ -30,8 +38,11 @@ interface SessionResult {
   bestLevel: number;
   stones: number;
   protectionStones: number;
+  safeguardStones: number;
   boughtProtectionCount: number;
+  boughtSafeguardCount: number;
   protectedCount: number;
+  safeguardedCount: number;
   destroyedCount: number;
   soldCount: number;
   salvagedCount: number;
@@ -48,23 +59,29 @@ const policies: Policy[] = [
   { label: "+15 분해 반복", salvageLevel: 15 },
   { label: "+12 분해 후 보호", prepareProtectionLevel: 12, protectionFromLevel: 15 },
   { label: "+15 보호 사용", protectionFromLevel: 15 },
+  { label: "+12 분해 후 수호", prepareSafeguardLevel: 12, safeguardFromLevel: 16 },
+  { label: "+16 수호 사용", protectionFromLevel: 15, safeguardFromLevel: 16 },
 ];
 
 function runSession(policy: Policy, random: () => number): SessionResult {
   let gold = INITIAL_GOLD;
   let stones = 0;
   let protectionStones = 0;
+  let safeguardStones = 0;
   let level = 1;
   let soulMileage = 0;
   let attempts = 0;
   let actions = 0;
   let bestLevel = 1;
   let boughtProtectionCount = 0;
+  let boughtSafeguardCount = 0;
   let protectedCount = 0;
+  let safeguardedCount = 0;
   let destroyedCount = 0;
   let soldCount = 0;
   let salvagedCount = 0;
   let storedCount = 0;
+  let claimedMilestones: string[] = [];
   const storedSwords: StoredSword[] = [];
 
   while (actions < MAX_ACTIONS) {
@@ -108,10 +125,33 @@ function runSession(policy: Policy, random: () => number): SessionResult {
     }
 
     if (
+      policy.safeguardFromLevel &&
+      safeguardStones === 0 &&
+      stones >= SAFEGUARD_STONE_COST
+    ) {
+      stones -= SAFEGUARD_STONE_COST;
+      safeguardStones += 1;
+      boughtSafeguardCount += 1;
+      continue;
+    }
+
+    if (
       policy.prepareProtectionLevel &&
       level >= policy.prepareProtectionLevel &&
       protectionStones === 0 &&
       stones < PROTECTION_STONE_COST
+    ) {
+      stones += getSalvageStonesForLevel(level);
+      salvagedCount += 1;
+      level = 1;
+      continue;
+    }
+
+    if (
+      policy.prepareSafeguardLevel &&
+      level >= policy.prepareSafeguardLevel &&
+      safeguardStones === 0 &&
+      stones < SAFEGUARD_STONE_COST
     ) {
       stones += getSalvageStonesForLevel(level);
       salvagedCount += 1;
@@ -127,6 +167,10 @@ function runSession(policy: Policy, random: () => number): SessionResult {
         Boolean(policy.protectionFromLevel) &&
         level >= (policy.protectionFromLevel ?? 31) &&
         protectionStones > 0,
+      useSafeguardStone:
+        Boolean(policy.safeguardFromLevel) &&
+        level >= (policy.safeguardFromLevel ?? 31) &&
+        safeguardStones > 0,
     });
     if (!result) break;
 
@@ -134,14 +178,29 @@ function runSession(policy: Policy, random: () => number): SessionResult {
     gold -= result.spentGold;
     stones += result.gainedStones;
     soulMileage = result.soulBurstUsed
-      ? Math.max(0, soulMileage - 100) + result.gainedSoulMileage
+      ? Math.max(0, soulMileage - SOUL_BURST_THRESHOLD) + result.gainedSoulMileage
       : soulMileage + result.gainedSoulMileage;
     level = result.nextLevel;
     bestLevel = Math.max(bestLevel, level);
+    const newMilestones = getUnclaimedMilestoneRewards(bestLevel, claimedMilestones);
+    const milestoneReward = sumMilestoneRewards(newMilestones);
+    gold += milestoneReward.gold;
+    stones += milestoneReward.stones;
+    protectionStones += milestoneReward.protectionStones;
+    safeguardStones += milestoneReward.safeguardStones;
+    claimedMilestones = [
+      ...claimedMilestones,
+      ...newMilestones.map((milestone) => milestone.id),
+    ];
 
     if (result.protectionStoneUsed) {
       protectionStones -= 1;
       protectedCount += 1;
+    }
+
+    if (result.safeguardStoneUsed) {
+      safeguardStones -= 1;
+      safeguardedCount += 1;
     }
 
     if (result.outcome === "destroyed") {
@@ -156,8 +215,11 @@ function runSession(policy: Policy, random: () => number): SessionResult {
     bestLevel,
     stones,
     protectionStones,
+    safeguardStones,
     boughtProtectionCount,
+    boughtSafeguardCount,
     protectedCount,
+    safeguardedCount,
     destroyedCount,
     soldCount,
     salvagedCount,
@@ -194,6 +256,8 @@ for (const policy of policies) {
   console.log(`avgDestroyed=${average(results, "destroyedCount").toFixed(2)}`);
   console.log(`avgProtectionBought=${average(results, "boughtProtectionCount").toFixed(2)}`);
   console.log(`avgProtected=${average(results, "protectedCount").toFixed(2)}`);
+  console.log(`avgSafeguardBought=${average(results, "boughtSafeguardCount").toFixed(2)}`);
+  console.log(`avgSafeguarded=${average(results, "safeguardedCount").toFixed(2)}`);
   console.log(
     `reach +12/${pct(rate(results, (result) => result.bestLevel >= 12))} +15/${pct(rate(results, (result) => result.bestLevel >= 15))} +20/${pct(rate(results, (result) => result.bestLevel >= 20))}`,
   );

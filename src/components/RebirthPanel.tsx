@@ -52,7 +52,7 @@ export function RebirthPanel({
           <strong>+{successBonus.toFixed(1)}%p</strong>
         </div>
         <div>
-          <span>GPS</span>
+          <span>초당 골드</span>
           <strong>x{gpsMultiplier.toFixed(1)}</strong>
         </div>
       </div>

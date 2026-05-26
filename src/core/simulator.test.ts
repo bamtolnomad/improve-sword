@@ -49,6 +49,22 @@ describe("balance simulator", () => {
     expect(report.outcomeRates.protected).toBeGreaterThanOrEqual(0);
   });
 
+  it("tracks safeguard strategies separately from basic protection", () => {
+    const report = runBalanceSimulation({
+      runs: 20,
+      initialGold: 2_000_000,
+      targetLevel: 25,
+      protectionFromLevel: 15,
+      safeguardFromLevel: 16,
+      maxAttemptsPerRun: 1000,
+      seed: 100,
+    });
+
+    expect(report.averageSafeguardUsedCount).toBeGreaterThanOrEqual(0);
+    expect(report.options.safeguardFromLevel).toBe(16);
+  });
+
+
   it("ignores a cashout level that would create a sell-only loop", () => {
     const report = runBalanceSimulation({
       runs: 1,
@@ -82,6 +98,7 @@ describe("attempt CSV export", () => {
       soulMileageAfter: 0,
       soulBurstUsed: false,
       protectionStoneUsed: false,
+      safeguardStoneUsed: false,
       blessingStoneUsed: false,
       rebirthCount: 0,
       successBonusRate: 0,

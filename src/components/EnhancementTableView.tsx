@@ -1,5 +1,6 @@
 import { Table2 } from "lucide-react";
-import { enhancementTable } from "../core/enhancementTable";
+import { getSalvageStonesForLevel } from "../core/economy";
+import { enhancementTable, getSellPriceForLevel } from "../core/enhancementTable";
 import { formatNumber, formatPercent } from "../core/format";
 
 interface EnhancementTableViewProps {
@@ -42,8 +43,8 @@ export function EnhancementTableView({ currentLevel }: EnhancementTableViewProps
                 <td>{formatPercent(row.downRate)}</td>
                 <td>{formatPercent(row.destroyRate)}</td>
                 <td>{formatNumber(row.cost)}G</td>
-                <td>{formatNumber(row.sellPrice)}G</td>
-                <td>{formatNumber(row.salvageStones)}</td>
+                <td>{formatNumber(getSellPriceForLevel(row.fromLevel))}G</td>
+                <td>{formatNumber(getSalvageStonesForLevel(row.fromLevel))}</td>
                 <td>{row.recommendedItem}</td>
               </tr>
             ))}
