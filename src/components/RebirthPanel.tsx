@@ -65,7 +65,13 @@ export function RebirthPanel({
         ))}
       </div>
 
-      <button className="rebirthButton" type="button" onClick={onRebirth} disabled={!unlocked}>
+      <button
+        className={`rebirthButton ${unlocked ? "hasActionDot" : ""}`}
+        type="button"
+        onClick={onRebirth}
+        disabled={!unlocked}
+      >
+        {unlocked ? <i className="actionDot" aria-hidden="true" /> : null}
         <RotateCcw size={18} />
         {unlocked ? "환생하기" : "30단계 필요"}
       </button>

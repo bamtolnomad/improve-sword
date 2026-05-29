@@ -1,0 +1,19 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 256 256" role="img" aria-label="whetstone">
+  <defs>
+    <linearGradient id="stoneBody" x1="0" x2="1" y1="0" y2="1">
+      <stop offset="0" stop-color="#b9c0c2"/>
+      <stop offset=".5" stop-color="#6f787d"/>
+      <stop offset="1" stop-color="#262d33"/>
+    </linearGradient>
+    <linearGradient id="bladeEdge" x1="0" x2="1">
+      <stop offset="0" stop-color="#fff9cf"/>
+      <stop offset="1" stop-color="#83dfff"/>
+    </linearGradient>
+  </defs>
+  <ellipse cx="128" cy="218" rx="86" ry="17" fill="#05070a" opacity=".45"/>
+  <path d="M54 154 164 70c14-11 34 15 20 27L74 181c-15 11-35-15-20-27Z" fill="url(#stoneBody)" stroke="#d4bd83" stroke-width="5"/>
+  <path d="M73 163 175 86" stroke="#ffffff" stroke-opacity=".28" stroke-width="7" stroke-linecap="round"/>
+  <path d="M52 122 206 96" stroke="url(#bladeEdge)" stroke-width="8" stroke-linecap="round"/>
+  <path d="M69 115 97 137M113 108l28 22M159 100l26 18" stroke="#ffdf87" stroke-width="5" stroke-linecap="round" opacity=".75"/>
+  <path d="M188 62h26M201 49v26M36 91h18M45 82v18" stroke="#fff2b7" stroke-width="5" stroke-linecap="round" opacity=".75"/>
+</svg>

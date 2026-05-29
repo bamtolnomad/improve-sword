@@ -38,6 +38,37 @@ export interface EnhancementResult {
   row: EnhancementRow;
 }
 
+export const TEMPERING_GRADES = ["cracked", "C", "B", "A", "S", "master"] as const;
+
+export type TemperingGrade = (typeof TEMPERING_GRADES)[number];
+
+export interface TemperingScores {
+  heatScore: number;
+  hammerScore: number;
+  quenchScore: number;
+  polishScore: number;
+}
+
+export interface TemperingBuff {
+  id: string;
+  label: string;
+  grade: TemperingGrade;
+  successBonusRate: number;
+  downRateReduction: number;
+  destroyRateReduction: number;
+  remainingEnhanceAttempts: number;
+}
+
+export interface TemperingRecord extends TemperingScores {
+  id: string;
+  timestamp: string;
+  grade: TemperingGrade;
+  totalScore: number;
+  masteryExpGained: number;
+  shardsGained: number;
+  buff?: TemperingBuff;
+}
+
 export interface GameLogEntry {
   id: string;
   message: string;

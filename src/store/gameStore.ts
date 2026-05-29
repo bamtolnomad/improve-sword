@@ -5,6 +5,11 @@ import {
   getEnhancementRow,
   getSellPriceForLevel,
 } from "../core/enhancementTable";
+import {
+  applyBlacksmithExp,
+  getEnhancementBlacksmithExp,
+  getTemperingBlacksmithExp,
+} from "../core/blacksmith";
 import { calculateEnhancementResult } from "../core/enhancement";
 import {
   BLESSING_STONE_COST,
@@ -30,6 +35,29 @@ import {
   getRebirthGpsMultiplier,
   getRebirthSuccessBonus,
 } from "../core/rebirth";
+import {
+  TEMPERING_DAILY_FREE_ATTEMPTS,
+  TEMPERING_HISTORY_LIMIT,
+  consumeTemperingBuffs,
+  getActiveTemperingBonus,
+  getTemperingGradeLabel,
+  getTemperingMasteryBonus,
+  getTodayKey,
+  resolveTemperingAttempt,
+  type TemperingAttemptResult,
+} from "../core/tempering";
+import {
+  createContractRewardResult,
+  getDeliveryContractReward,
+  getForgeContractTargets,
+  getNextContractStreak,
+  getPatronGiftReward,
+  getRecoveryContractReward,
+  getTodaysContractClaims,
+  type ForgeContractId,
+  type ForgeContractReward,
+  type ForgeContractRewardResult,
+} from "../core/contracts";
 import type {
   EnhancementAttemptRecord,
   EnhancementOutcome,
@@ -37,6 +65,9 @@ import type {
   PlaytestNote,
   PlaytestNoteCategory,
   StoredSword,
+  TemperingBuff,
+  TemperingRecord,
+  TemperingScores,
 } from "../core/types";
 
 const INITIAL_GOLD = 18000;
@@ -67,10 +98,26 @@ interface GameStoreState {
   playtestNotes: PlaytestNote[];
   miningCooldownUntil: string | null;
   miningStonePity: number;
+  blacksmithLevel: number;
+  blacksmithExp: number;
+  temperingMasteryLevel: number;
+  temperingMasteryExp: number;
+  temperingDailyAttemptsUsed: number;
+  temperingDailyDate: string;
+  temperingCrackResearch: number;
+  temperingShards: number;
+  temperingBuffs: TemperingBuff[];
+  temperingHistory: TemperingRecord[];
+  contractDailyDate: string;
+  contractClaimsToday: ForgeContractId[];
+  contractStreak: number;
   enhance: () => void;
   sellSword: () => void;
   salvageSword: () => void;
   completeMiningJob: () => MiningReward | null;
+  claimPatronGift: () => ForgeContractRewardResult | null;
+  completeDeliveryContract: () => ForgeContractRewardResult | null;
+  completeRecoveryContract: () => ForgeContractRewardResult | null;
   storeSword: () => void;
   claimOfflineReward: () => void;
   buyProtectionStone: () => void;
@@ -86,6 +133,7 @@ interface GameStoreState {
   startDecisionSession: () => void;
   addPlaytestNote: (text: string, category: PlaytestNoteCategory) => void;
   clearPlaytestNotes: () => void;
+  completeTempering: (scores: TemperingScores) => TemperingAttemptResult | null;
   resetGame: () => void;
 }
 
@@ -162,6 +210,19 @@ function createInitialState() {
     playtestNotes: [],
     miningCooldownUntil: null,
     miningStonePity: 0,
+    blacksmithLevel: 1,
+    blacksmithExp: 0,
+    temperingMasteryLevel: 1,
+    temperingMasteryExp: 0,
+    temperingDailyAttemptsUsed: 0,
+    temperingDailyDate: getTodayKey(),
+    temperingCrackResearch: 0,
+    temperingShards: 0,
+    temperingBuffs: [],
+    temperingHistory: [],
+    contractDailyDate: getTodayKey(),
+    contractClaimsToday: [],
+    contractStreak: 0,
   };
 }
 
@@ -175,6 +236,46 @@ function formatRewardSummary(reward: MilestoneReward): string {
   ]
     .filter(Boolean)
     .join(", ");
+}
+
+function formatContractRewardSummary(reward: ForgeContractReward): string {
+  return [
+    reward.gold ? `${formatNumber(reward.gold)}G` : "",
+    reward.stones ? `강화석 +${formatNumber(reward.stones)}` : "",
+    reward.protectionStones ? `보호석 +${formatNumber(reward.protectionStones)}` : "",
+    reward.safeguardStones ? `수호석 +${formatNumber(reward.safeguardStones)}` : "",
+    reward.blessingStones ? `축복석 +${formatNumber(reward.blessingStones)}` : "",
+    reward.blacksmithExp ? `대장장이 +${formatNumber(reward.blacksmithExp)} XP` : "",
+  ]
+    .filter(Boolean)
+    .join(", ");
+}
+
+function getContractClaimUpdate(
+  state: Pick<GameStoreState, "contractDailyDate" | "contractClaimsToday" | "contractStreak">,
+  contractId: ForgeContractId,
+) {
+  const today = getTodayKey();
+  const claims = getTodaysContractClaims(
+    state.contractDailyDate ?? "",
+    state.contractClaimsToday ?? [],
+    today,
+  );
+
+  if (claims.includes(contractId)) return null;
+
+  const streak = getNextContractStreak(
+    state.contractDailyDate ?? "",
+    state.contractClaimsToday ?? [],
+    state.contractStreak ?? 0,
+    today,
+  );
+
+  return {
+    contractDailyDate: today,
+    contractClaimsToday: [...claims, contractId],
+    contractStreak: streak,
+  };
 }
 
 export const useGameStore = create<GameStoreState>()(
@@ -192,7 +293,16 @@ export const useGameStore = create<GameStoreState>()(
         const rebirthCount = state.rebirthCount ?? 0;
         const discoveredLevels = state.discoveredLevels ?? [1];
         const bestLevel = state.bestLevel ?? state.swordLevel;
-        const successBonusRate = getRebirthSuccessBonus(rebirthCount);
+        const temperingBuffs = state.temperingBuffs ?? [];
+        const masteryBonus = getTemperingMasteryBonus(
+          state.temperingMasteryLevel ?? 1,
+          state.swordLevel,
+        );
+        const activeTemperingBonus = getActiveTemperingBonus(temperingBuffs);
+        const successBonusRate =
+          getRebirthSuccessBonus(rebirthCount) +
+          masteryBonus.successBonusRate +
+          activeTemperingBonus.successBonusRate;
         const result = calculateEnhancementResult(
           state.swordLevel,
           state.soulMileage,
@@ -202,6 +312,10 @@ export const useGameStore = create<GameStoreState>()(
             useSafeguardStone: shouldUseSafeguard,
             useBlessingStone: shouldUseBlessing,
             successBonusRate,
+            downRateReduction:
+              masteryBonus.downRateReduction + activeTemperingBonus.downRateReduction,
+            destroyRateReduction:
+              masteryBonus.destroyRateReduction + activeTemperingBonus.destroyRateReduction,
           },
         );
 
@@ -239,6 +353,18 @@ export const useGameStore = create<GameStoreState>()(
         const nextDiscoveredLevels = addDiscoveredLevel(
           addDiscoveredLevel(discoveredLevels, beforeLevel),
           result.nextLevel,
+        );
+        const blacksmithLevel = state.blacksmithLevel ?? 1;
+        const blacksmithExp = state.blacksmithExp ?? 0;
+        const blacksmithExpGained = getEnhancementBlacksmithExp(
+          beforeLevel,
+          result.outcome,
+          blacksmithLevel,
+        );
+        const nextBlacksmith = applyBlacksmithExp(
+          blacksmithLevel,
+          blacksmithExp,
+          blacksmithExpGained,
         );
         const claimedMilestones = state.milestoneRewardsClaimed ?? [];
         const newMilestones = getUnclaimedMilestoneRewards(
@@ -278,6 +404,7 @@ export const useGameStore = create<GameStoreState>()(
           result.blessingStoneUsed ? "축복석 -1" : "",
           result.protectionStoneUsed ? "보호석 -1" : "",
           result.safeguardStoneUsed ? "수호석 -1" : "",
+          temperingBuffs.length > 0 ? "담금질 기운 -1회" : "",
         ]
           .filter(Boolean)
           .join(", ");
@@ -289,6 +416,11 @@ export const useGameStore = create<GameStoreState>()(
           result.gainedStones > 0 || result.gainedSoulMileage > 0
             ? ` 강화석 +${result.gainedStones}, 원혼 +${result.gainedSoulMileage}.`
             : "";
+        const blacksmithText = ` 대장장이 +${blacksmithExpGained} XP${
+          nextBlacksmith.level > blacksmithLevel
+            ? `, Lv.${nextBlacksmith.level} 달성`
+            : ""
+        }.`;
 
         console.info("[enhance]", {
           from: beforeLevel,
@@ -301,6 +433,8 @@ export const useGameStore = create<GameStoreState>()(
           safeguardStoneUsed: result.safeguardStoneUsed,
           blessingStoneUsed: result.blessingStoneUsed,
           successBonusRate,
+          temperingMasteryBonus: masteryBonus,
+          activeTemperingBonus,
         });
 
         set({
@@ -321,18 +455,21 @@ export const useGameStore = create<GameStoreState>()(
           swordLevel: result.nextLevel,
           soulMileage: nextSoulMileage,
           totalAttempts: nextAttempt,
+          blacksmithLevel: nextBlacksmith.level,
+          blacksmithExp: nextBlacksmith.exp,
           bestLevel: nextBestLevel,
           discoveredLevels: nextDiscoveredLevels,
           milestoneRewardsClaimed: [
             ...claimedMilestones,
             ...newMilestones.map((milestone) => milestone.id),
           ],
+          temperingBuffs: consumeTemperingBuffs(temperingBuffs),
           lastOutcome: result.outcome,
           attemptRecords: [...state.attemptRecords, attemptRecord],
           logs: trimLogs([
             ...milestoneLogs,
             createLog(
-              `${beforeLevel}->${targetLevelText} ${outcomeLabel(result.outcome)}.${burstText}${itemText ? ` ${itemText}.` : ""}${rewardText}`,
+              `${beforeLevel}->${targetLevelText} ${outcomeLabel(result.outcome)}.${burstText}${itemText ? ` ${itemText}.` : ""}${rewardText}${blacksmithText}`,
               outcomeTone(result.outcome),
             ),
             ...state.logs,
@@ -447,6 +584,208 @@ export const useGameStore = create<GameStoreState>()(
         });
 
         return reward;
+      },
+      claimPatronGift: () => {
+        const state = get();
+        const claimUpdate = getContractClaimUpdate(state, "patron-gift");
+
+        if (!claimUpdate) {
+          set({
+            logs: trimLogs([
+              createLog("오늘의 후원 물자는 이미 수령했습니다.", "warning"),
+              ...state.logs,
+            ]),
+          });
+          return null;
+        }
+
+        const baseReward = getPatronGiftReward(
+          state.blacksmithLevel ?? 1,
+          claimUpdate.contractStreak,
+        );
+        const result = createContractRewardResult(
+          "patron-gift",
+          baseReward,
+          {
+            swordLevel: state.swordLevel,
+            blacksmithLevel: state.blacksmithLevel ?? 1,
+            contractStreak: claimUpdate.contractStreak,
+          },
+        );
+        const reward = result.totalReward;
+        const nextBlacksmith = applyBlacksmithExp(
+          state.blacksmithLevel ?? 1,
+          state.blacksmithExp ?? 0,
+          reward.blacksmithExp,
+        );
+
+        set({
+          gold: state.gold + reward.gold,
+          stones: state.stones + reward.stones,
+          protectionStones: (state.protectionStones ?? 0) + reward.protectionStones,
+          safeguardStones: (state.safeguardStones ?? 0) + reward.safeguardStones,
+          blessingStones: (state.blessingStones ?? 0) + reward.blessingStones,
+          blacksmithLevel: nextBlacksmith.level,
+          blacksmithExp: nextBlacksmith.exp,
+          ...claimUpdate,
+          logs: trimLogs([
+            createLog(
+              `계약 후원 수령: ${formatContractRewardSummary(reward)}. 룬 카드 3장을 개봉했습니다.`,
+              "success",
+            ),
+            ...state.logs,
+          ]),
+        });
+
+        return result;
+      },
+      completeDeliveryContract: () => {
+        const state = get();
+        const claimUpdate = getContractClaimUpdate(state, "royal-delivery");
+        const targets = getForgeContractTargets(state.bestLevel ?? state.swordLevel);
+
+        if (!claimUpdate) {
+          set({
+            logs: trimLogs([
+              createLog("오늘의 납품 계약은 이미 완료했습니다.", "warning"),
+              ...state.logs,
+            ]),
+          });
+          return null;
+        }
+
+        if (state.swordLevel < targets.deliveryTarget) {
+          set({
+            logs: trimLogs([
+              createLog(
+                `납품 계약에는 +${targets.deliveryTarget} 이상 검이 필요합니다.`,
+                "warning",
+              ),
+              ...state.logs,
+            ]),
+          });
+          return null;
+        }
+
+        const row = getEnhancementRow(state.swordLevel);
+        const baseReward = getDeliveryContractReward(
+          state.swordLevel,
+          row?.cost ?? 0,
+          claimUpdate.contractStreak,
+        );
+        const result = createContractRewardResult(
+          "royal-delivery",
+          baseReward,
+          {
+            swordLevel: state.swordLevel,
+            blacksmithLevel: state.blacksmithLevel ?? 1,
+            contractStreak: claimUpdate.contractStreak,
+          },
+        );
+        const reward = result.totalReward;
+        const nextBlacksmith = applyBlacksmithExp(
+          state.blacksmithLevel ?? 1,
+          state.blacksmithExp ?? 0,
+          reward.blacksmithExp,
+        );
+        const discoveredLevels = state.discoveredLevels ?? [1];
+
+        set({
+          gold: state.gold + reward.gold,
+          stones: state.stones + reward.stones,
+          protectionStones: (state.protectionStones ?? 0) + reward.protectionStones,
+          safeguardStones: (state.safeguardStones ?? 0) + reward.safeguardStones,
+          blessingStones: (state.blessingStones ?? 0) + reward.blessingStones,
+          swordLevel: 1,
+          bestLevel: Math.max(state.bestLevel ?? state.swordLevel, state.swordLevel),
+          discoveredLevels: addDiscoveredLevel(discoveredLevels, state.swordLevel),
+          blacksmithLevel: nextBlacksmith.level,
+          blacksmithExp: nextBlacksmith.exp,
+          lastOutcome: undefined,
+          ...claimUpdate,
+          logs: trimLogs([
+            createLog(
+              `왕국 납품 완료: +${state.swordLevel} 검을 넘기고 ${formatContractRewardSummary(reward)} 획득. 룬 카드 3장을 개봉했습니다.`,
+              "success",
+            ),
+            ...state.logs,
+          ]),
+        });
+
+        return result;
+      },
+      completeRecoveryContract: () => {
+        const state = get();
+        const claimUpdate = getContractClaimUpdate(state, "recovery-order");
+        const targets = getForgeContractTargets(state.bestLevel ?? state.swordLevel);
+
+        if (!claimUpdate) {
+          set({
+            logs: trimLogs([
+              createLog("오늘의 회수 계약은 이미 완료했습니다.", "warning"),
+              ...state.logs,
+            ]),
+          });
+          return null;
+        }
+
+        if (state.swordLevel < targets.recoveryTarget) {
+          set({
+            logs: trimLogs([
+              createLog(
+                `회수 계약에는 +${targets.recoveryTarget} 이상 검이 필요합니다.`,
+                "warning",
+              ),
+              ...state.logs,
+            ]),
+          });
+          return null;
+        }
+
+        const baseReward = getRecoveryContractReward(
+          state.swordLevel,
+          claimUpdate.contractStreak,
+        );
+        const result = createContractRewardResult(
+          "recovery-order",
+          baseReward,
+          {
+            swordLevel: state.swordLevel,
+            blacksmithLevel: state.blacksmithLevel ?? 1,
+            contractStreak: claimUpdate.contractStreak,
+          },
+        );
+        const reward = result.totalReward;
+        const nextBlacksmith = applyBlacksmithExp(
+          state.blacksmithLevel ?? 1,
+          state.blacksmithExp ?? 0,
+          reward.blacksmithExp,
+        );
+        const discoveredLevels = state.discoveredLevels ?? [1];
+
+        set({
+          gold: state.gold + reward.gold,
+          stones: state.stones + reward.stones,
+          protectionStones: (state.protectionStones ?? 0) + reward.protectionStones,
+          safeguardStones: (state.safeguardStones ?? 0) + reward.safeguardStones,
+          blessingStones: (state.blessingStones ?? 0) + reward.blessingStones,
+          swordLevel: 1,
+          bestLevel: Math.max(state.bestLevel ?? state.swordLevel, state.swordLevel),
+          discoveredLevels: addDiscoveredLevel(discoveredLevels, state.swordLevel),
+          blacksmithLevel: nextBlacksmith.level,
+          blacksmithExp: nextBlacksmith.exp,
+          lastOutcome: undefined,
+          ...claimUpdate,
+          logs: trimLogs([
+            createLog(
+              `회수 계약 완료: +${state.swordLevel} 검을 분해하고 ${formatContractRewardSummary(reward)} 획득. 룬 카드 3장을 개봉했습니다.`,
+              "success",
+            ),
+            ...state.logs,
+          ]),
+        });
+
+        return result;
       },
       storeSword: () => {
         const state = get();
@@ -749,6 +1088,77 @@ export const useGameStore = create<GameStoreState>()(
           ]),
         });
       },
+      completeTempering: (scores: TemperingScores) => {
+        const state = get();
+        const today = getTodayKey();
+        const attemptsUsed =
+          state.temperingDailyDate === today ? state.temperingDailyAttemptsUsed ?? 0 : 0;
+
+        if (attemptsUsed >= TEMPERING_DAILY_FREE_ATTEMPTS) {
+          set({
+            logs: trimLogs([
+              createLog("오늘 무료 담금질 횟수를 모두 사용했습니다.", "warning"),
+              ...state.logs,
+            ]),
+            temperingDailyDate: today,
+            temperingDailyAttemptsUsed: attemptsUsed,
+          });
+          return null;
+        }
+
+        const result = resolveTemperingAttempt(
+          scores,
+          state.temperingMasteryLevel ?? 1,
+          state.temperingMasteryExp ?? 0,
+          state.temperingCrackResearch ?? 0,
+        );
+        const gradeLabel = getTemperingGradeLabel(result.record.grade);
+        const buffText = result.record.buff ? ` ${result.record.buff.label} 버프 획득.` : "";
+        const levelUpText =
+          result.nextMasteryLevel > (state.temperingMasteryLevel ?? 1)
+            ? ` 숙련 ${result.nextMasteryLevel} 달성.`
+            : "";
+        const blacksmithLevel = state.blacksmithLevel ?? 1;
+        const blacksmithExp = state.blacksmithExp ?? 0;
+        const blacksmithExpGained = getTemperingBlacksmithExp(result.record.grade);
+        const nextBlacksmith = applyBlacksmithExp(
+          blacksmithLevel,
+          blacksmithExp,
+          blacksmithExpGained,
+        );
+        const blacksmithText = ` 대장장이 +${blacksmithExpGained} XP${
+          nextBlacksmith.level > blacksmithLevel
+            ? `, Lv.${nextBlacksmith.level} 달성`
+            : ""
+        }.`;
+
+        set({
+          temperingMasteryLevel: result.nextMasteryLevel,
+          temperingMasteryExp: result.nextMasteryExp,
+          blacksmithLevel: nextBlacksmith.level,
+          blacksmithExp: nextBlacksmith.exp,
+          temperingDailyDate: today,
+          temperingDailyAttemptsUsed: attemptsUsed + 1,
+          temperingCrackResearch: result.nextCrackResearch,
+          temperingShards: (state.temperingShards ?? 0) + result.record.shardsGained,
+          temperingBuffs: result.record.buff
+            ? [result.record.buff, ...(state.temperingBuffs ?? [])].slice(0, 3)
+            : state.temperingBuffs ?? [],
+          temperingHistory: [
+            result.record,
+            ...(state.temperingHistory ?? []),
+          ].slice(0, TEMPERING_HISTORY_LIMIT),
+          logs: trimLogs([
+            createLog(
+              `담금질 ${gradeLabel}: 숙련 +${result.record.masteryExpGained}, 조각 +${result.record.shardsGained}.${buffText}${levelUpText}${blacksmithText}`,
+              result.record.grade === "cracked" ? "warning" : "success",
+            ),
+            ...state.logs,
+          ]),
+        });
+
+        return result;
+      },
       resetGame: () => {
         const state = get();
         set({
@@ -783,6 +1193,19 @@ export const useGameStore = create<GameStoreState>()(
         playtestNotes: state.playtestNotes,
         miningCooldownUntil: state.miningCooldownUntil,
         miningStonePity: state.miningStonePity,
+        blacksmithLevel: state.blacksmithLevel,
+        blacksmithExp: state.blacksmithExp,
+        temperingMasteryLevel: state.temperingMasteryLevel,
+        temperingMasteryExp: state.temperingMasteryExp,
+        temperingDailyAttemptsUsed: state.temperingDailyAttemptsUsed,
+        temperingDailyDate: state.temperingDailyDate,
+        temperingCrackResearch: state.temperingCrackResearch,
+        temperingShards: state.temperingShards,
+        temperingBuffs: state.temperingBuffs,
+        temperingHistory: state.temperingHistory,
+        contractDailyDate: state.contractDailyDate,
+        contractClaimsToday: state.contractClaimsToday,
+        contractStreak: state.contractStreak,
       }),
     },
   ),

@@ -1,4 +1,5 @@
 import type { EnhancementRow } from "./types";
+import { getPublicAssetPath } from "./assets";
 
 export const MAX_SWORD_LEVEL = 30;
 export const SOUL_BURST_THRESHOLD = 40;
@@ -102,5 +103,5 @@ export function getSellPriceForLevel(level: number): number {
 export function getSwordImagePath(level: number): string {
   const safeLevel = Math.min(Math.max(Math.trunc(level), 1), MAX_SWORD_LEVEL);
   const stage = String(safeLevel).padStart(2, "0");
-  return `/assets/swords-transparent/sword_stage_${stage}.png`;
+  return getPublicAssetPath(`assets/swords-transparent/sword_stage_${stage}.png`);
 }

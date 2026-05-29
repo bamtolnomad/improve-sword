@@ -1,12 +1,16 @@
+import { Hammer } from "lucide-react";
 import { useLayoutEffect, useRef, useState, type CSSProperties } from "react";
 import { createPortal } from "react-dom";
 import { getSwordImagePath } from "../core/enhancementTable";
+import { getNextSwordGrade, getSwordGrade, getSwordGradeProgress } from "../core/swordGrade";
 import type { EnhancementOutcome } from "../core/types";
 
 interface SwordViewProps {
   level: number;
   lastOutcome?: EnhancementOutcome;
   resultKey: number;
+  ritualPhase?: "idle" | "charge" | "strike" | "resolve";
+  ritualKey?: number;
 }
 
 function outcomeClass(outcome?: EnhancementOutcome): string {
@@ -80,6 +84,8 @@ function cashoutGateLabel(level: number): string | null {
 }
 
 type SwordAuraTier = "dormant" | "ember" | "gold" | "storm" | "void" | "immortal";
+type SwordElement = "none" | "fire" | "solar" | "storm" | "void";
+type SwordSparkTier = "none" | "glint" | "radiant" | "mythic";
 
 function swordAuraTier(level: number): SwordAuraTier {
   if (level >= 25) return "immortal";
@@ -90,9 +96,36 @@ function swordAuraTier(level: number): SwordAuraTier {
   return "dormant";
 }
 
-export function SwordView({ level, lastOutcome, resultKey }: SwordViewProps) {
+function swordElement(level: number): SwordElement {
+  if (level >= 25) return "fire";
+  if (level >= 20) return "void";
+  if (level >= 15) return "storm";
+  if (level >= 10) return "solar";
+  if (level >= 5) return "fire";
+  return "none";
+}
+
+function swordSparkTier(level: number): SwordSparkTier {
+  if (level >= 25) return "mythic";
+  if (level >= 18) return "radiant";
+  if (level >= 10) return "glint";
+  return "none";
+}
+
+export function SwordView({
+  level,
+  lastOutcome,
+  resultKey,
+  ritualPhase = "idle",
+  ritualKey = 0,
+}: SwordViewProps) {
   const gateLabel = cashoutGateLabel(level);
   const auraTier = swordAuraTier(level);
+  const element = swordElement(level);
+  const sparkTier = swordSparkTier(level);
+  const grade = getSwordGrade(level);
+  const nextGrade = getNextSwordGrade(level);
+  const gradeProgress = getSwordGradeProgress(level);
   const stageRef = useRef<HTMLElement | null>(null);
   const [outcomeStyle, setOutcomeStyle] = useState<CSSProperties>({});
 
@@ -156,27 +189,34 @@ export function SwordView({ level, lastOutcome, resultKey }: SwordViewProps) {
     <>
       <section
         ref={stageRef}
-        className={`swordStage ${outcomeClass(lastOutcome)}`}
+        className={`swordStage ${outcomeClass(lastOutcome)} ritual-${ritualPhase}`}
         aria-label="현재 검"
       >
         <div className="forgeRing" aria-hidden="true" />
         <div className="stageHeader">
           <span>{outcomeLabel(lastOutcome)}</span>
           <strong>+{level}</strong>
+          <div className={`swordGradeBadge grade-${grade.id}`}>
+            <span>{grade.label}</span>
+            <small>
+              {nextGrade ? `다음 ${nextGrade.label} +${nextGrade.minLevel}` : "최종 등급"}
+            </small>
+            <i style={{ width: `${gradeProgress}%` }} aria-hidden="true" />
+          </div>
           {gateLabel ? (
             <em className={`cashoutGate ${level >= 11 ? "cashoutGateProfit" : ""}`}>
               {gateLabel}
             </em>
           ) : null}
         </div>
-        <div className={`swordImageWrap auraWrap-${auraTier}`}>
-          <div className={`swordAura aura-${auraTier}`} aria-hidden="true">
-            <span />
-            <span />
-            <span />
-            <span />
-            <span />
-            <span />
+        <div
+          className={`swordImageWrap auraWrap-${auraTier} element-${element} sparkWrap-${sparkTier}`}
+        >
+          <div className={`swordAura aura-${auraTier}`} aria-hidden="true" />
+          <div className={`swordSparkles spark-${sparkTier}`} aria-hidden="true">
+            {Array.from({ length: 24 }, (_, index) => (
+              <span key={index} />
+            ))}
           </div>
           <img
             className="swordImage"
@@ -185,6 +225,30 @@ export function SwordView({ level, lastOutcome, resultKey }: SwordViewProps) {
             draggable={false}
           />
         </div>
+        {ritualPhase !== "idle" ? (
+          <div
+            key={`sword-ritual-${ritualKey}`}
+            className={`forgeRitualOverlay ritual-${ritualPhase}`}
+            aria-hidden="true"
+          >
+            <div className="ritualHeat" />
+            <div className="ritualHammerMark">
+              <Hammer size={36} />
+            </div>
+            <div className="ritualSparkField">
+              {Array.from({ length: 18 }, (_, index) => (
+                <span key={index} />
+              ))}
+            </div>
+            <div className="ritualPulseText">
+              {ritualPhase === "charge"
+                ? "기운 응축"
+                : ritualPhase === "strike"
+                  ? "타격"
+                  : "판정"}
+            </div>
+          </div>
+        ) : null}
         <div className="emberLine" aria-hidden="true" />
       </section>
       {outcomeScene && typeof document !== "undefined"

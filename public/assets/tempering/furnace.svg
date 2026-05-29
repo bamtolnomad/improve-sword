@@ -1,0 +1,22 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 256 256" role="img" aria-label="tempering furnace">
+  <defs>
+    <radialGradient id="fireGlow" cx="50%" cy="58%" r="48%">
+      <stop offset="0" stop-color="#fff1a8"/>
+      <stop offset="0.34" stop-color="#ff9b38"/>
+      <stop offset="0.72" stop-color="#d9482f"/>
+      <stop offset="1" stop-color="#3c1511" stop-opacity="0"/>
+    </radialGradient>
+    <linearGradient id="stone" x1="0" x2="1" y1="0" y2="1">
+      <stop offset="0" stop-color="#4a4f57"/>
+      <stop offset="1" stop-color="#15191f"/>
+    </linearGradient>
+  </defs>
+  <ellipse cx="128" cy="218" rx="88" ry="18" fill="#05070a" opacity=".48"/>
+  <path d="M46 88c8-28 33-47 82-47s74 19 82 47l14 100H32L46 88Z" fill="url(#stone)" stroke="#8f7850" stroke-width="5"/>
+  <path d="M72 101c11-19 29-30 56-30s45 11 56 30l8 66H64l8-66Z" fill="#0d0f13" stroke="#2d333c" stroke-width="6"/>
+  <ellipse cx="128" cy="154" rx="58" ry="44" fill="url(#fireGlow)"/>
+  <path d="M120 178c-24-20 8-42 3-70 29 23 8 42 26 70-15-8-16-22-12-36-18 18-18 27-17 36Z" fill="#fff3b0"/>
+  <path d="M101 184c-19-30 7-45 9-70 14 18 10 32 4 47 14-14 20-31 16-54 38 35 32 62 7 83 4-18-2-31-13-44 0 21-9 29-23 38Z" fill="#ff8a32"/>
+  <path d="M68 191h120" stroke="#f4bd66" stroke-width="6" stroke-linecap="round" opacity=".55"/>
+  <path d="M53 95h150M42 181h172" stroke="#ffffff" stroke-opacity=".12" stroke-width="4"/>
+</svg>

@@ -1,26 +1,53 @@
-import { Flag, Gift } from "lucide-react";
+import { Flag } from "lucide-react";
 import {
   milestoneRewards,
   type MilestoneReward,
   type MilestoneRewardDefinition,
 } from "../core/milestones";
 import { formatNumber } from "../core/format";
+import { RewardChips, type RewardChipItem } from "./RewardChips";
 
 interface MilestonePanelProps {
   bestLevel: number;
   claimedIds: string[];
 }
 
-function formatReward(reward: MilestoneReward): string {
-  const parts = [
-    reward.gold ? `${formatNumber(reward.gold)}G` : "",
-    reward.stones ? `강화석 ${formatNumber(reward.stones)}` : "",
-    reward.protectionStones ? `보호석 ${formatNumber(reward.protectionStones)}` : "",
-    reward.safeguardStones ? `수호석 ${formatNumber(reward.safeguardStones)}` : "",
-    reward.blessingStones ? `축복석 ${formatNumber(reward.blessingStones)}` : "",
-  ].filter(Boolean);
+function getRewardItems(reward: MilestoneReward): RewardChipItem[] {
+  const items: RewardChipItem[] = [];
 
-  return parts.join(" · ");
+  if (reward.gold) {
+    items.push({ kind: "gold", label: "골드", value: `${formatNumber(reward.gold)}G` });
+  }
+
+  if (reward.stones) {
+    items.push({ kind: "stone", label: "강화석", value: formatNumber(reward.stones) });
+  }
+
+  if (reward.protectionStones) {
+    items.push({
+      kind: "protection",
+      label: "보호석",
+      value: formatNumber(reward.protectionStones),
+    });
+  }
+
+  if (reward.safeguardStones) {
+    items.push({
+      kind: "safeguard",
+      label: "수호석",
+      value: formatNumber(reward.safeguardStones),
+    });
+  }
+
+  if (reward.blessingStones) {
+    items.push({
+      kind: "blessing",
+      label: "축복석",
+      value: formatNumber(reward.blessingStones),
+    });
+  }
+
+  return items;
 }
 
 function getVisibleMilestones(
@@ -76,10 +103,7 @@ export function MilestonePanel({ bestLevel, claimedIds }: MilestonePanelProps) {
               <div className="miniTrack" aria-hidden="true">
                 <div style={{ width: `${progress * 100}%` }} />
               </div>
-              <small>
-                <Gift size={14} />
-                {formatReward(milestone.reward)}
-              </small>
+              <RewardChips items={getRewardItems(milestone.reward)} compact />
             </article>
           );
         })}

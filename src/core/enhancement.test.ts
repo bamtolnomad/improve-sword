@@ -2,6 +2,7 @@ import { describe, expect, it } from "vitest";
 import { enhancementTable } from "./enhancementTable";
 import {
   applyBlessingStone,
+  applyRiskReduction,
   applySoulBurst,
   applySuccessBonus,
   calculateEnhancementResult,
@@ -79,6 +80,21 @@ describe("enhancement core", () => {
         boostedRow.keepRate +
         boostedRow.downRate +
         boostedRow.destroyRate,
+    ).toBe(100);
+  });
+
+  it("lets tempering reduce downgrade and destruction risk", () => {
+    const row = enhancementTable.find((item) => item.fromLevel === 20)!;
+    const temperedRow = applyRiskReduction(row, 4, 3);
+
+    expect(temperedRow.downRate).toBe(28);
+    expect(temperedRow.destroyRate).toBe(12);
+    expect(temperedRow.keepRate).toBe(30);
+    expect(
+      temperedRow.successRate +
+        temperedRow.keepRate +
+        temperedRow.downRate +
+        temperedRow.destroyRate,
     ).toBe(100);
   });
 

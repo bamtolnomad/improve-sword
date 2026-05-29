@@ -19,6 +19,7 @@ import {
 } from "../core/enhancementTable";
 import { getSalvageStonesForLevel } from "../core/economy";
 import { formatNumber, formatPercent } from "../core/format";
+import { getNextSwordGrade, getSwordGrade, getSwordGradeProgress } from "../core/swordGrade";
 import type { EnhancementAttemptRecord, EnhancementOutcome } from "../core/types";
 
 interface DesktopForgePanelProps {
@@ -89,11 +90,18 @@ export function DesktopForgePanel({
   const sellStrategy = getSellStrategyForLevel(level);
   const salvageStones = getSalvageStonesForLevel(level);
   const recentAttempts = attemptRecords.slice(-5).reverse();
+  const grade = getSwordGrade(level);
+  const nextGrade = getNextSwordGrade(level);
+  const gradeProgress = getSwordGradeProgress(level);
 
   return (
     <section className="desktopForgePanel" aria-label="대장간 현황">
       <div className="forgePanelHero">
-        <span>대장간</span>
+        <div className={`gradePill grade-${grade.id}`}>
+          <span>{grade.label} 등급</span>
+          <small>{nextGrade ? `다음 ${nextGrade.label} +${nextGrade.minLevel}` : "최종 등급"}</small>
+          <i style={{ width: `${gradeProgress}%` }} aria-hidden="true" />
+        </div>
         <strong>+{level} {swordTitle(level)}</strong>
         <p>{row ? "다음 망치질에 필요한 것만 남겼습니다." : "최고 단계에 도달했습니다."}</p>
       </div>
@@ -122,6 +130,9 @@ export function DesktopForgePanel({
       </div>
 
       <div className="forgeDecisionStrip">
+        <span className={`decisionBadge grade-${grade.id}`}>
+          {grade.label}
+        </span>
         <span className={`decisionBadge ${sellStrategy.band}`}>
           {sellStrategy.label}
         </span>

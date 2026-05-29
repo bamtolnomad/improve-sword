@@ -28,12 +28,16 @@ import {
   getStoredSwordGpsBonus,
 } from "../core/economy";
 import { formatNumber, formatPercent } from "../core/format";
+import type { ForgeRitualPhase } from "../core/forgeRitual";
+import { getNextSwordGrade, getSwordGrade } from "../core/swordGrade";
 
 interface ControlPanelProps {
   level: number;
   stones: number;
   soulMileage: number;
   canEnhance: boolean;
+  isForging?: boolean;
+  forgeRitualPhase?: ForgeRitualPhase;
   onEnhance: () => void;
   onSell: () => void;
   onSalvage: () => void;
@@ -55,6 +59,8 @@ export function ControlPanel({
   stones,
   soulMileage,
   canEnhance,
+  isForging = false,
+  forgeRitualPhase = "idle",
   onEnhance,
   onSell,
   onSalvage,
@@ -86,6 +92,14 @@ export function ControlPanel({
   const sellStrategy = getSellStrategyForLevel(level);
   const salvageStones = getSalvageStonesForLevel(level);
   const gpsBonus = getStoredSwordGpsBonus(level);
+  const grade = getSwordGrade(level);
+  const nextGrade = getNextSwordGrade(level);
+  const forgeSubtitle =
+    forgeRitualPhase === "strike"
+      ? "망치 타격"
+      : forgeRitualPhase === "resolve"
+        ? "결과 판정"
+        : "화로 응축";
   const canSettleSword = level > 1;
   const dangerRate = displayedRow ? displayedRow.downRate + displayedRow.destroyRate : 0;
   const protectionProgressAfterSalvage = Math.min(
@@ -118,6 +132,13 @@ export function ControlPanel({
 
       {row ? (
         <>
+          <div className={`controlGradeLine grade-${grade.id}`}>
+            <span>{grade.label} 등급</span>
+            <strong>
+              {nextGrade ? `다음 ${nextGrade.label} +${nextGrade.minLevel}` : "최종 등급"}
+            </strong>
+          </div>
+
           <div className="forgeOdds">
             <div className="oddsPrimary">
               <span>성공률</span>
@@ -225,14 +246,14 @@ export function ControlPanel({
 
       <div className="actionStack">
         <button
-          className="primaryButton enhanceAction"
+          className={`primaryButton enhanceAction ${isForging ? "forging" : ""}`}
           type="button"
           onClick={onEnhance}
-          disabled={!row || !canEnhance}
+          disabled={!row || !canEnhance || isForging}
         >
           <Hammer size={20} />
-          <span>강화하기</span>
-          {row ? <small>{formatNumber(row.cost)}G</small> : null}
+          <span>{isForging ? "단조 중" : "강화하기"}</span>
+          {row ? <small>{isForging ? forgeSubtitle : `${formatNumber(row.cost)}G`}</small> : null}
         </button>
         <button
           className="secondaryButton sellAction"

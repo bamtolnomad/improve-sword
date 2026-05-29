@@ -14,6 +14,8 @@ export interface EnhancementOptions {
   useSafeguardStone?: boolean;
   useBlessingStone?: boolean;
   successBonusRate?: number;
+  downRateReduction?: number;
+  destroyRateReduction?: number;
 }
 
 const GREAT_SUCCESS_MAX_RATE = 5;
@@ -97,6 +99,23 @@ export function applySuccessBonus(row: EnhancementRow, successBonusRate: number)
   };
 }
 
+export function applyRiskReduction(
+  row: EnhancementRow,
+  downRateReduction: number,
+  destroyRateReduction: number,
+): EnhancementRow {
+  const downReduction = Math.min(row.downRate, Math.max(0, downRateReduction));
+  const destroyReduction = Math.min(row.destroyRate, Math.max(0, destroyRateReduction));
+  if (downReduction <= 0 && destroyReduction <= 0) return row;
+
+  return {
+    ...row,
+    keepRate: row.keepRate + downReduction + destroyReduction,
+    downRate: row.downRate - downReduction,
+    destroyRate: row.destroyRate - destroyReduction,
+  };
+}
+
 export function getGreatSuccessRate(row: EnhancementRow): number {
   if (row.successRate <= 0) return 0;
   return Math.min(GREAT_SUCCESS_MAX_RATE, Math.max(1, row.successRate * 0.1));
@@ -174,9 +193,16 @@ export function calculateEnhancementResult(
   const soulBurstUsed = soulMileage >= SOUL_BURST_THRESHOLD;
   const blessingStoneUsed = Boolean(options.useBlessingStone);
   const successBonusRate = Math.max(0, options.successBonusRate ?? 0);
+  const downRateReduction = Math.max(0, options.downRateReduction ?? 0);
+  const destroyRateReduction = Math.max(0, options.destroyRateReduction ?? 0);
   const rowAfterSoul = soulBurstUsed ? applySoulBurst(baseRow) : baseRow;
   const rowAfterBlessing = blessingStoneUsed ? applyBlessingStone(rowAfterSoul) : rowAfterSoul;
-  const row = applySuccessBonus(rowAfterBlessing, successBonusRate);
+  const rowAfterSuccessBonus = applySuccessBonus(rowAfterBlessing, successBonusRate);
+  const row = applyRiskReduction(
+    rowAfterSuccessBonus,
+    downRateReduction,
+    destroyRateReduction,
+  );
   const rolledOutcome = rollEnhancement(row, randomValue);
   const protectionStoneUsed =
     rolledOutcome === "destroyed" && Boolean(options.useProtectionStone);

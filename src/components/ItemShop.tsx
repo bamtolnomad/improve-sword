@@ -109,11 +109,12 @@ export function ItemShop({
           return (
             <button
               key={item.key}
-              className={`shopItem ${item.key}`}
+              className={`shopItem ${item.key} ${canBuy ? "hasActionDot" : ""}`}
               type="button"
               onClick={() => handleBuy(item)}
               disabled={!canBuy}
             >
+              {canBuy ? <i className="actionDot" aria-hidden="true" /> : null}
               <div className="shopItemIcon">
                 <Icon size={26} />
               </div>

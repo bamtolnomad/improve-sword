@@ -1,5 +1,6 @@
-import { Coins, Gem, Skull, Target, TrendingUp, X } from "lucide-react";
+import { Coins, Gem, Hammer, Skull, Target, TrendingUp, X } from "lucide-react";
 import { useEffect, useMemo, useState } from "react";
+import { BLACKSMITH_MAX_LEVEL, getBlacksmithExpToNext } from "../core/blacksmith";
 import { SOUL_BURST_THRESHOLD } from "../core/enhancementTable";
 import { formatNumber } from "../core/format";
 
@@ -9,12 +10,32 @@ interface HudProps {
   gps: number;
   soulMileage: number;
   totalAttempts: number;
+  blacksmithLevel: number;
+  blacksmithExp: number;
 }
 
-type HudDetailKey = "gold" | "stones" | "gps" | "attempts" | "soul";
+type HudDetailKey = "gold" | "stones" | "gps" | "attempts" | "blacksmith" | "soul";
 
-export function Hud({ gold, stones, gps, soulMileage, totalAttempts }: HudProps) {
+export function Hud({
+  gold,
+  stones,
+  gps,
+  soulMileage,
+  totalAttempts,
+  blacksmithLevel,
+  blacksmithExp,
+}: HudProps) {
   const [activeDetail, setActiveDetail] = useState<HudDetailKey | null>(null);
+  const safeBlacksmithLevel = Math.min(
+    Math.max(Math.trunc(blacksmithLevel || 1), 1),
+    BLACKSMITH_MAX_LEVEL,
+  );
+  const safeBlacksmithExp = Math.max(0, Math.trunc(blacksmithExp || 0));
+  const blacksmithExpToNext = getBlacksmithExpToNext(safeBlacksmithLevel);
+  const blacksmithPercent =
+    safeBlacksmithLevel >= BLACKSMITH_MAX_LEVEL
+      ? 100
+      : Math.min((safeBlacksmithExp / blacksmithExpToNext) * 100, 100);
   const soulPercent = Math.min((soulMileage / SOUL_BURST_THRESHOLD) * 100, 100);
   const isSoulBurstReady = soulMileage >= SOUL_BURST_THRESHOLD;
   const details = useMemo(
@@ -63,6 +84,21 @@ export function Hud({ gold, stones, gps, soulMileage, totalAttempts }: HudProps)
           ["현재 누적", `${formatNumber(totalAttempts)}회`],
         ],
       },
+      blacksmith: {
+        Icon: Hammer,
+        title: "대장장이 레벨",
+        value:
+          safeBlacksmithLevel >= BLACKSMITH_MAX_LEVEL
+            ? `Lv.${BLACKSMITH_MAX_LEVEL} 명장`
+            : `Lv.${safeBlacksmithLevel} · ${formatNumber(safeBlacksmithExp)} / ${formatNumber(blacksmithExpToNext)} XP`,
+        description:
+          "검 단계와 별개로 남는 계정 성장입니다. 강화와 담금질을 할수록 쌓이며, 향후 퀘스트 품질과 보상 수령에 연결됩니다.",
+        rows: [
+          ["획득처", "강화 결과, 담금질 결과"],
+          ["저단계 반복", "현재 검이 너무 낮으면 XP 25%만 지급"],
+          ["현재 진행", `${Math.floor(blacksmithPercent)}%`],
+        ],
+      },
       soul: {
         Icon: Skull,
         title: "원혼",
@@ -77,7 +113,19 @@ export function Hud({ gold, stones, gps, soulMileage, totalAttempts }: HudProps)
         ],
       },
     }),
-    [gold, gps, isSoulBurstReady, soulMileage, soulPercent, stones, totalAttempts],
+    [
+      blacksmithExp,
+      blacksmithExpToNext,
+      blacksmithLevel,
+      blacksmithPercent,
+      gold,
+      gps,
+      isSoulBurstReady,
+      soulMileage,
+      soulPercent,
+      stones,
+      totalAttempts,
+    ],
   );
 
   useEffect(() => {
@@ -162,6 +210,32 @@ export function Hud({ gold, stones, gps, soulMileage, totalAttempts }: HudProps)
           <div className="meterTrack" aria-hidden="true">
             <div className="meterFill" style={{ width: `${soulPercent}%` }} />
           </div>
+        </button>
+        <button
+          className="blacksmithMeter"
+          type="button"
+          onClick={() => setActiveDetail("blacksmith")}
+          aria-label="대장장이 레벨 설명 열기"
+        >
+          <div className="soulMeterHeader blacksmithMeterHeader">
+            <span>
+              <Hammer size={17} />
+              대장장이
+            </span>
+            <strong>
+              {safeBlacksmithLevel >= BLACKSMITH_MAX_LEVEL
+                ? `Lv.${BLACKSMITH_MAX_LEVEL} 명장`
+                : `Lv.${safeBlacksmithLevel}`}
+            </strong>
+          </div>
+          <div className="meterTrack blacksmithTrack" aria-hidden="true">
+            <div className="meterFill" style={{ width: `${blacksmithPercent}%` }} />
+          </div>
+          <small>
+            {safeBlacksmithLevel >= BLACKSMITH_MAX_LEVEL
+              ? "최고 숙련"
+              : `${formatNumber(safeBlacksmithExp)} / ${formatNumber(blacksmithExpToNext)} XP`}
+          </small>
         </button>
       </section>
 

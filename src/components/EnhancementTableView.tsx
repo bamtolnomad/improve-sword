@@ -2,6 +2,7 @@ import { Table2 } from "lucide-react";
 import { getSalvageStonesForLevel } from "../core/economy";
 import { enhancementTable, getSellPriceForLevel } from "../core/enhancementTable";
 import { formatNumber, formatPercent } from "../core/format";
+import { getSwordGrade } from "../core/swordGrade";
 
 interface EnhancementTableViewProps {
   currentLevel: number;
@@ -22,6 +23,7 @@ export function EnhancementTableView({ currentLevel }: EnhancementTableViewProps
           <thead>
             <tr>
               <th>구간</th>
+              <th>등급</th>
               <th>성공</th>
               <th>유지</th>
               <th>하락</th>
@@ -37,6 +39,11 @@ export function EnhancementTableView({ currentLevel }: EnhancementTableViewProps
               <tr key={row.fromLevel} className={row.fromLevel === currentLevel ? "active" : ""}>
                 <td>
                   +{row.fromLevel}→+{row.toLevel}
+                </td>
+                <td>
+                  <span className={`tableGrade grade-${getSwordGrade(row.fromLevel).id}`}>
+                    {getSwordGrade(row.fromLevel).label}
+                  </span>
                 </td>
                 <td>{formatPercent(row.successRate)}</td>
                 <td>{formatPercent(row.keepRate)}</td>

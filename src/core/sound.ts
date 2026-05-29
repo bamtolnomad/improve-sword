@@ -47,6 +47,18 @@ export function playForgeStrike() {
   tone(640, 0.06, "triangle", 0.04, 0.018);
 }
 
+export function playForgeCharge() {
+  tone(88, 0.18, "sine", 0.024);
+  tone(132, 0.16, "triangle", 0.026, 0.08);
+  tone(196, 0.14, "triangle", 0.024, 0.18);
+}
+
+export function playForgeImpact() {
+  tone(72, 0.1, "sawtooth", 0.085);
+  tone(420, 0.055, "square", 0.036, 0.012);
+  tone(1120, 0.075, "triangle", 0.03, 0.04);
+}
+
 export function playShopPurchase() {
   tone(740, 0.05, "triangle", 0.034);
   tone(988, 0.07, "triangle", 0.03, 0.045);

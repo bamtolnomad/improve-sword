@@ -1,0 +1,19 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 256 256" role="img" aria-label="quench tub">
+  <defs>
+    <linearGradient id="barrel" x1="0" x2="1" y1="0" y2="1">
+      <stop offset="0" stop-color="#8b5a34"/>
+      <stop offset="1" stop-color="#2a1710"/>
+    </linearGradient>
+    <linearGradient id="water" x1="0" x2="1">
+      <stop offset="0" stop-color="#8ee8ff"/>
+      <stop offset="1" stop-color="#376bff"/>
+    </linearGradient>
+  </defs>
+  <ellipse cx="128" cy="219" rx="82" ry="17" fill="#05070a" opacity=".45"/>
+  <path d="M55 88h146l-16 112c-3 18-111 18-114 0L55 88Z" fill="url(#barrel)" stroke="#b88951" stroke-width="6"/>
+  <ellipse cx="128" cy="89" rx="74" ry="24" fill="#1a1110" stroke="#d6a160" stroke-width="6"/>
+  <ellipse cx="128" cy="84" rx="61" ry="15" fill="url(#water)" opacity=".9"/>
+  <path d="M77 86c25 13 70 13 101 0" fill="none" stroke="#dffaff" stroke-width="5" stroke-linecap="round" opacity=".7"/>
+  <path d="M90 111c22 8 54 8 78 0M82 151c27 9 65 9 92 0" stroke="#2b1710" stroke-width="5" opacity=".36"/>
+  <path d="M107 55c-15 20 12 25 0 43M139 44c-18 26 16 31 1 58M170 55c-14 18 11 26 1 43" stroke="#c8f8ff" stroke-width="6" stroke-linecap="round" opacity=".72"/>
+</svg>

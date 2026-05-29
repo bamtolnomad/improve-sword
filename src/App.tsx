@@ -30,15 +30,37 @@ import { PlaytestNotes } from "./components/PlaytestNotes";
 import { RebirthPanel } from "./components/RebirthPanel";
 import { ResultLog } from "./components/ResultLog";
 import { SwordView } from "./components/SwordView";
-import { calculateGps, calculateOfflineReward } from "./core/economy";
+import { TemperingPanel } from "./components/TemperingPanel";
+import {
+  BLESSING_STONE_COST,
+  calculateGps,
+  calculateOfflineReward,
+  PROTECTION_STONE_COST,
+  SAFEGUARD_STONE_COST,
+} from "./core/economy";
+import { getForgeContractReadiness } from "./core/contracts";
 import { getEnhancementRow } from "./core/enhancementTable";
-import { getRebirthSuccessBonus } from "./core/rebirth";
-import { playForgeStrike, playOutcomeSound } from "./core/sound";
+import {
+  type ForgeRitualPhase,
+  getForgeRitualPhase,
+  shouldApplyForgeResult,
+  shouldEndForgeRitual,
+} from "./core/forgeRitual";
+import { getUnclaimedMilestoneRewards } from "./core/milestones";
+import { canRebirth, getRebirthSuccessBonus } from "./core/rebirth";
+import {
+  playForgeCharge,
+  playForgeImpact,
+  playForgeStrike,
+  playOutcomeSound,
+} from "./core/sound";
+import { getTodayKey, TEMPERING_DAILY_FREE_ATTEMPTS } from "./core/tempering";
 import { useGameStore } from "./store/gameStore";
 
 type SheetKey =
   | "forge"
   | "shop"
+  | "tempering"
   | "commission"
   | "vault"
   | "rebirth"
@@ -49,6 +71,7 @@ type SheetKey =
 const sheetTabs: Array<{ key: SheetKey; label: string; icon: typeof ScrollText }> = [
   { key: "forge", label: "대장간", icon: Flame },
   { key: "shop", label: "상점", icon: Shield },
+  { key: "tempering", label: "담금질", icon: Hammer },
   { key: "commission", label: "의뢰", icon: Hammer },
   { key: "vault", label: "보관소", icon: Archive },
   { key: "rebirth", label: "환생", icon: Trophy },
@@ -63,6 +86,7 @@ const mobileDrawerTabs = sheetTabs.filter(
 const mobileMenuLabels: Record<SheetKey, string> = {
   forge: "대장간",
   shop: "상점",
+  tempering: "담금",
   commission: "의뢰",
   vault: "보관",
   rebirth: "환생",
@@ -83,6 +107,15 @@ function isMobileViewport(): boolean {
   return typeof window !== "undefined" && window.matchMedia("(max-width: 900px)").matches;
 }
 
+function hasMiningAction(cooldownUntil: string | null, now: number): boolean {
+  if (!cooldownUntil) return true;
+
+  const cooldownTime = new Date(cooldownUntil).getTime();
+  if (!Number.isFinite(cooldownTime)) return true;
+
+  return cooldownTime <= now;
+}
+
 export default function App() {
   const [activeSheet, setActiveSheet] = useState<SheetKey>(getInitialSheet);
   const [isSheetOpen, setIsSheetOpen] = useState(false);
@@ -90,9 +123,17 @@ export default function App() {
   const [hasEnteredForge, setHasEnteredForge] = useState(false);
   const [isEnteringForge, setIsEnteringForge] = useState(false);
   const [transitionHint, setTransitionHint] = useState<"shop" | "forge" | null>(null);
+  const [actionNow, setActionNow] = useState(() => Date.now());
+  const [forgeRitualPhase, setForgeRitualPhase] = useState<ForgeRitualPhase>("idle");
+  const [forgeRitualKey, setForgeRitualKey] = useState(0);
+  const [forgeRitualStartedAt, setForgeRitualStartedAt] = useState<number | null>(null);
+  const [isResultFocusActive, setIsResultFocusActive] = useState(false);
   const lastSoundAttemptRef = useRef(0);
   const hintTimerRef = useRef<number | null>(null);
   const enterTimerRef = useRef<number | null>(null);
+  const forgeRitualIntervalRef = useRef<number | null>(null);
+  const forgeRitualPhaseRef = useRef<ForgeRitualPhase>("idle");
+  const forgeRitualResolvedRef = useRef(false);
   const shellRef = useRef<HTMLElement | null>(null);
   const forgeRef = useRef<HTMLElement | null>(null);
   const sheetRef = useRef<HTMLElement | null>(null);
@@ -129,10 +170,26 @@ export default function App() {
     playtestNotes,
     miningCooldownUntil,
     miningStonePity,
+    blacksmithLevel,
+    blacksmithExp,
+    temperingMasteryLevel,
+    temperingMasteryExp,
+    temperingDailyAttemptsUsed,
+    temperingDailyDate,
+    temperingCrackResearch,
+    temperingShards,
+    temperingBuffs,
+    temperingHistory,
+    contractDailyDate,
+    contractClaimsToday,
+    contractStreak,
     enhance,
     sellSword,
     salvageSword,
     completeMiningJob,
+    claimPatronGift,
+    completeDeliveryContract,
+    completeRecoveryContract,
     storeSword,
     claimOfflineReward,
     buyProtectionStone,
@@ -148,17 +205,63 @@ export default function App() {
     startDecisionSession,
     addPlaytestNote,
     clearPlaytestNotes,
+    completeTempering,
     resetGame,
   } = useGameStore();
 
   const row = getEnhancementRow(swordLevel);
   const canEnhance = row ? gold >= row.cost : false;
+  const isForgeRitualActive = forgeRitualPhase !== "idle";
+  const isForgeFeedbackActive = isForgeRitualActive || isResultFocusActive;
   const gps = calculateGps(storedSwords, rebirthCount);
   const offlineReward = calculateOfflineReward(gps, lastRewardAt);
   const successBonusRate = getRebirthSuccessBonus(rebirthCount);
   const ActiveSheetIcon = sheetTabs.find((tab) => tab.key === activeSheet)?.icon ?? ScrollText;
   const activeSheetLabel = sheetTabs.find((tab) => tab.key === activeSheet)?.label ?? "전투 기록";
   const latestLog = logs[0];
+  const todayTemperingAttempts =
+    temperingDailyDate === getTodayKey() ? temperingDailyAttemptsUsed : 0;
+  const hasTemperingAction = todayTemperingAttempts < TEMPERING_DAILY_FREE_ATTEMPTS;
+  const contractReadiness = getForgeContractReadiness({
+    swordLevel,
+    bestLevel,
+    contractDailyDate: contractDailyDate ?? "",
+    contractClaimsToday: contractClaimsToday ?? [],
+    todayKey: getTodayKey(),
+  });
+  const hasCommissionAction =
+    hasMiningAction(miningCooldownUntil, actionNow) || contractReadiness.hasReadyContract;
+  const hasShopAction =
+    stones >= PROTECTION_STONE_COST ||
+    stones >= SAFEGUARD_STONE_COST ||
+    stones >= BLESSING_STONE_COST;
+  const hasRebirthAction = canRebirth(bestLevel);
+  const hasMilestoneAction =
+    getUnclaimedMilestoneRewards(bestLevel, milestoneRewardsClaimed ?? []).length > 0;
+  const actionDots: Partial<Record<SheetKey, boolean>> = {
+    shop: hasShopAction,
+    tempering: hasTemperingAction,
+    commission: hasCommissionAction,
+    rebirth: hasRebirthAction,
+    log: hasMilestoneAction,
+  };
+  const hasMobileMenuAction = mobileDrawerTabs.some((tab) => actionDots[tab.key]);
+
+  const clearForgeRitualHeartbeat = () => {
+    if (forgeRitualIntervalRef.current === null) return;
+
+    window.clearInterval(forgeRitualIntervalRef.current);
+    forgeRitualIntervalRef.current = null;
+  };
+
+  const resetForgeRitual = () => {
+    clearForgeRitualHeartbeat();
+    forgeRitualPhaseRef.current = "idle";
+    forgeRitualResolvedRef.current = false;
+    setForgeRitualPhase("idle");
+    setForgeRitualStartedAt(null);
+    setIsResultFocusActive(false);
+  };
 
   const flashTransitionHint = (hint: "shop" | "forge") => {
     if (hintTimerRef.current !== null) {
@@ -263,15 +366,88 @@ export default function App() {
       if (enterTimerRef.current !== null) {
         window.clearTimeout(enterTimerRef.current);
       }
+      clearForgeRitualHeartbeat();
       if (correctionFrameRef.current !== null) {
         window.cancelAnimationFrame(correctionFrameRef.current);
       }
     };
   }, []);
 
+  useEffect(() => {
+    if (!miningCooldownUntil) return;
+
+    const intervalId = window.setInterval(() => {
+      setActionNow(Date.now());
+    }, 1000);
+
+    return () => {
+      window.clearInterval(intervalId);
+    };
+  }, [miningCooldownUntil]);
+
+  useEffect(() => {
+    if (forgeRitualStartedAt === null) return;
+
+    const setPhaseFromElapsed = (elapsed: number) => {
+      const nextPhase = getForgeRitualPhase(elapsed);
+
+      if (forgeRitualPhaseRef.current === nextPhase) return;
+
+      forgeRitualPhaseRef.current = nextPhase;
+      setForgeRitualPhase(nextPhase);
+
+      if (nextPhase === "strike") {
+        playForgeImpact();
+      }
+      if (nextPhase === "resolve") {
+        playForgeStrike();
+      }
+    };
+
+    const tick = () => {
+      const elapsed = performance.now() - forgeRitualStartedAt;
+
+      setPhaseFromElapsed(elapsed);
+
+      if (shouldApplyForgeResult(elapsed) && !forgeRitualResolvedRef.current) {
+        forgeRitualResolvedRef.current = true;
+        setIsResultFocusActive(true);
+        enhance();
+      }
+
+      if (shouldEndForgeRitual(elapsed)) {
+        resetForgeRitual();
+        return;
+      }
+    };
+
+    const handleVisibilityChange = () => {
+      if (document.visibilityState === "visible") {
+        tick();
+      }
+    };
+
+    tick();
+    forgeRitualIntervalRef.current = window.setInterval(tick, 50);
+    document.addEventListener("visibilitychange", handleVisibilityChange);
+
+    return () => {
+      clearForgeRitualHeartbeat();
+      document.removeEventListener("visibilitychange", handleVisibilityChange);
+    };
+  }, [enhance, forgeRitualStartedAt]);
+
   const handleEnhance = () => {
-    playForgeStrike();
-    enhance();
+    if (!row || !canEnhance || isForgeRitualActive) return;
+
+    clearForgeRitualHeartbeat();
+    setForgeRitualKey((key) => key + 1);
+    forgeRitualPhaseRef.current = "charge";
+    forgeRitualResolvedRef.current = false;
+    setForgeRitualStartedAt(performance.now());
+    setForgeRitualPhase("charge");
+    setIsResultFocusActive(false);
+    playForgeCharge();
   };
 
   const handleMobileQaGold = () => {
@@ -522,7 +698,30 @@ export default function App() {
             currentEnhancementCost={row?.cost ?? 0}
             miningCooldownUntil={miningCooldownUntil}
             miningStonePity={miningStonePity}
+            bestLevel={bestLevel}
+            swordLevel={swordLevel}
+            blacksmithLevel={blacksmithLevel}
+            contractDailyDate={contractDailyDate}
+            contractClaimsToday={contractClaimsToday}
+            contractStreak={contractStreak}
             onMine={completeMiningJob}
+            onClaimPatronGift={claimPatronGift}
+            onCompleteDeliveryContract={completeDeliveryContract}
+            onCompleteRecoveryContract={completeRecoveryContract}
+          />
+        );
+      case "tempering":
+        return (
+          <TemperingPanel
+            masteryLevel={temperingMasteryLevel}
+            masteryExp={temperingMasteryExp}
+            dailyAttemptsUsed={temperingDailyAttemptsUsed}
+            dailyAttemptsDate={temperingDailyDate}
+            crackResearch={temperingCrackResearch}
+            shards={temperingShards}
+            buffs={temperingBuffs}
+            history={temperingHistory}
+            onCompleteTempering={completeTempering}
           />
         );
       case "rebirth":
@@ -575,6 +774,8 @@ export default function App() {
       ref={shellRef}
       className={`gameShell ${isSheetOpen ? "sheet-open" : ""} ${
         lastOutcome ? `screen-${lastOutcome}` : ""
+      } ${isForgeRitualActive ? `forge-ritual-${forgeRitualPhase}` : ""} ${
+        isResultFocusActive ? "forge-result-focus" : ""
       }`}
     >
       <div className="forgeBackdrop" aria-hidden="true">
@@ -591,6 +792,8 @@ export default function App() {
           gps={gps}
           soulMileage={soulMileage}
           totalAttempts={totalAttempts}
+          blacksmithLevel={blacksmithLevel}
+          blacksmithExp={blacksmithExp}
         />
       </header>
 
@@ -601,13 +804,16 @@ export default function App() {
             return (
               <button
                 key={tab.key}
-                className={activeSheet === tab.key ? "active" : ""}
+                className={`${activeSheet === tab.key ? "active" : ""} ${
+                  actionDots[tab.key] ? "hasActionDot" : ""
+                }`}
                 type="button"
                 onClick={() => selectSheet(tab.key, false)}
                 aria-label={tab.label}
                 title={tab.label}
               >
                 <Icon size={22} />
+                {actionDots[tab.key] ? <i className="actionDot" aria-hidden="true" /> : null}
                 <span>{tab.label}</span>
               </button>
             );
@@ -629,7 +835,13 @@ export default function App() {
             </div>
           </div>
 
-          <SwordView level={swordLevel} lastOutcome={lastOutcome} resultKey={totalAttempts} />
+          <SwordView
+            level={swordLevel}
+            lastOutcome={lastOutcome}
+            resultKey={totalAttempts}
+            ritualPhase={forgeRitualPhase}
+            ritualKey={forgeRitualKey}
+          />
 
           {row ? (
             <div
@@ -686,7 +898,7 @@ export default function App() {
             </div>
           ) : null}
 
-          {latestLog ? (
+          {latestLog && !isForgeFeedbackActive ? (
             <div className={`battleToast ${latestLog.tone}`} role="status">
               {latestLog.message}
             </div>
@@ -697,6 +909,8 @@ export default function App() {
             stones={stones}
             soulMileage={soulMileage}
             canEnhance={canEnhance}
+            isForging={isForgeRitualActive}
+            forgeRitualPhase={forgeRitualPhase}
             onEnhance={handleEnhance}
             onSell={sellSword}
             onSalvage={salvageSword}
@@ -750,13 +964,16 @@ export default function App() {
                 <button
                   key={tab.key}
                   data-tab={tab.key}
-                  className={activeSheet === tab.key ? "active" : ""}
+                  className={`${activeSheet === tab.key ? "active" : ""} ${
+                    actionDots[tab.key] ? "hasActionDot" : ""
+                  }`}
                   type="button"
                   onClick={() => selectSheet(tab.key, false)}
                   aria-label={tab.label}
                   title={tab.label}
                 >
                   <Icon size={18} />
+                  {actionDots[tab.key] ? <i className="actionDot" aria-hidden="true" /> : null}
                   <span>{tab.label}</span>
                 </button>
               );
@@ -767,13 +984,16 @@ export default function App() {
       </div>
 
       <button
-        className={`mobileMenuToggle ${isMobileMenuOpen ? "active" : ""}`}
+        className={`mobileMenuToggle ${isMobileMenuOpen ? "active" : ""} ${
+          hasMobileMenuAction ? "hasActionDot" : ""
+        }`}
         type="button"
         aria-label={isMobileMenuOpen ? "메뉴 닫기" : "메뉴 열기"}
         aria-expanded={isMobileMenuOpen}
         aria-controls="mobile-menu-drawer"
         onClick={() => setIsMobileMenuOpen((isOpen) => !isOpen)}
       >
+        {hasMobileMenuAction ? <i className="actionDot" aria-hidden="true" /> : null}
         {isMobileMenuOpen ? <X size={20} /> : <Menu size={20} />}
       </button>
       <div
@@ -786,7 +1006,9 @@ export default function App() {
           return (
             <button
               key={tab.key}
-              className={activeSheet === tab.key ? "active" : ""}
+              className={`${activeSheet === tab.key ? "active" : ""} ${
+                actionDots[tab.key] ? "hasActionDot" : ""
+              }`}
               type="button"
               onClick={() => {
                 selectSheet(tab.key, true);
@@ -795,6 +1017,7 @@ export default function App() {
               aria-label={tab.label}
             >
               <Icon size={19} />
+              {actionDots[tab.key] ? <i className="actionDot" aria-hidden="true" /> : null}
               <span>{mobileMenuLabels[tab.key]}</span>
             </button>
           );
